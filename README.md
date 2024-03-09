@@ -1,2 +1,1 @@
-# Hyidra
 # Hydra
