@@ -8,7 +8,7 @@ nm = nmap.PortScanner()
 
 # Define o alvo
 target_network = '192.168.0.0/24'
-scan_arguments = '-sS -p 1-1024 -sV'
+scan_arguments = '-sS -p 1-1024 -sV -O'
 
 try:
     # Realiza uma varredura SYN nas portas 1-1024
@@ -29,6 +29,12 @@ try:
                     print(f'Port: {port}\tState: {port_info["state"]}\tService: {service_name}\tVersion: {service_version}')
             else:
                 print(f'Nenhuma informação de portas TCP encontrada para {host}')
+            if 'osclass' in nm[host]:
+                for osclass in nm[host]['osclass']:
+                    print(f'OS: {osclass["osfamily"]} {osclass["osgen"]} {osclass["osvendor"]} {osclass["osaccuracy"]}%')
+            else:
+                print(f'Não foi possível detectar o sistema operacional para {host}')
+
 except nmap.PortScannerError as e:
     print(f'Erro ao executar o nmap: {e}')
 except Exception as e:
