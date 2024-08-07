@@ -1,9 +1,6 @@
-import mysql.connector
-
-def get_db_connection():
-    return mysql.connector.connect(
-        host='localhost',
-        user='superusuario',
-        password='1Ringt0rul3th3m@ll',
-        database='Hydra_monitoring'
-    )
+DB_CONFIG = {
+    'user': 'superuser',
+    'password': '1Ringt0rul3th3m@ll',
+    'host': '127.0.0.1',
+    'database': 'Hydra_monitoring'
+}
