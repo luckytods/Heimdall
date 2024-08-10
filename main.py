@@ -16,12 +16,12 @@ def encerrar_processo(cod=0):
     print(f'Encerrando processo...')
     exit(cod)
 
-def get_ip_and_network_psutil(): #Retorna IP da máquina, o MAC address e a rede
+def get_my_info(): #Retorna IP da máquina, o MAC address e a rede
     # Obter informações sobre as interfaces de rede
     addrs = psutil.net_if_addrs()
     
     # Exibir todas as interfaces disponíveis
-    print("Interfaces disponíveis:", list(addrs.keys()))
+   # print("Interfaces disponíveis:", list(addrs.keys()))
     
     # Selecionar automaticamente a primeira interface válida (que possui um IP e não é uma interface de loopback)
     for interface_name, addresses in addrs.items():
@@ -73,13 +73,8 @@ if not conn.is_connected():
 
 db.create_tables() #Garante que as tabelas necessárias existam
 
+myIP, target, MACadd = get_my_info()    #Define IP e Mac address da máquine e coleta rede
 
-
-
-# Define o alvo
-target = '192.168.0.0/24'
-
-# Realiza a varredura completa com detecção de SO e argumentos adicionais
 scan_arguments = '-sP'
 
 nm.scan(hosts=target, arguments=scan_arguments)
