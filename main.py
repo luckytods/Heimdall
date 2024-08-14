@@ -4,6 +4,7 @@ import sched
 import time
 import socket
 import struct
+from datetime import datetime
 import databse_commands as db
 
 
@@ -75,22 +76,62 @@ db.create_tables() #Garante que as tabelas necessárias existam
 
 myIP, target, MACadd = get_my_info()    #Define IP e Mac address da máquine e coleta rede
 
-scan_arguments = '-sP'
+scan_arguments = '-sP -O' #Ver se isso será necessário
 
-nm.scan(hosts=target, arguments=scan_arguments)
+nm.scan(hosts=target, arguments='-sn') #Primeiro Scan para achar dispositivos conectados apenas
+
+hosts = nm.all_hosts()
+
 
 # Imprime os resultados das portas, SOs e scripts NSE
 for host in nm.all_hosts():
     print(f'Host: {host}')
+    os = None
+    mac = None
+
     if 'mac' in nm[host]['addresses']:
-        print(f'MAC Address: {nm[host]["addresses"]["mac"]}')
+        mac = nm[host]["addresses"]["mac"]
+        print(f'MAC Address: {mac}')
+    elif host == myIP:
+        mac = MACadd
+        print(f'MAC Address: {mac}')
     else:
         print('MAC Address: Não encontrado')
+
     if 'osclass' in nm[host]:
         for osclass in nm[host]['osclass']:
             print(f'OS: {osclass["osfamily"]} {osclass["osgen"]} {osclass["osvendor"]} {osclass["osaccuracy"]}%')
+            os = nm[host]['osclass']["osfamily"]
     else:
         print(f'Não foi possível detectar o sistema operacional para {host}')
+
+
+    timestamp = datetime.now()
+
+
+    row = db.fetch_by_ip(conn, host)
+
+    print(f'{row}\n\n')
+
+    if row:
+        if row[0] == mac:
+            updates = {"last_online": timestamp}
+            db.update_device(conn, row[0], updates)
+            continue
+
+        else:
+            updates = { "ip_address": None,
+                        "last_online": timestamp}
+            
+            db.update_device(conn, row[0], updates)
+    
+    row = db.fetch_by_mac(conn, mac)
+    if row:
+        updates = { "ip_address": host,
+                    "last_online": timestamp}
+        db.update_device(conn, row[0], updates)
+    else:
+        db.insert_device(conn, timestamp, host, 0, mac, os,)
     
     if 'tcp' in nm[host]:
         for port in nm[host]['tcp']:
