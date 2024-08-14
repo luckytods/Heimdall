@@ -51,6 +51,26 @@ def get_my_info(): #Retorna IP da máquina, o MAC address e a rede
 
     raise ValueError("Nenhuma interface válida encontrada.")
 
+def connect_to_db():
+    #Tenta se conectar ao bd 10 vezes no maximo
+    for tentativas in range(10):
+        print(f'\t({tentativas+1})Conectando ao Banco de Dados...\n')
+        conn = db.create_connection()
+        print(f'Conexão com Banco de Dados: {conn}')
+        if conn.is_connected():
+            break
+        print(f'\tTentando novamente...\n')
+
+    #Caso a conexão tenha falhado, encerra o processo.
+    if not conn.is_connected():
+        print(f'Não foi possivel se conectar ao Banco de Dados. Verifique se as informações inseridas em config.py estão corretas.')
+        encerrar_processo(1)
+
+    db.create_tables() #Garante que as tabelas necessárias existam
+
+    return conn
+
+
 #-------------------------------------------#
 #--------------Função main------------------#
 #-------------------------------------------#
@@ -58,21 +78,7 @@ def get_my_info(): #Retorna IP da máquina, o MAC address e a rede
 # Inicializa o scanner
 nm = nmap.PortScanner()
 
-#Tenta se conectar ao bd 10 vezes no maximo
-for tentativas in range(10):
-    print(f'\t({tentativas+1})Conectando ao Banco de Dados...\n')
-    conn = db.create_connection()
-    print(f'Conexão com Banco de Dados: {conn}')
-    if conn.is_connected():
-        break
-    print(f'\tTentando novamente...\n')
-
-#Caso a conexão tenha falhado, encerra o processo.
-if not conn.is_connected():
-    print(f'Não foi possivel se conectar ao Banco de Dados. Verifique se as informações inseridas em config.py estão corretas.')
-    encerrar_processo(1)
-
-db.create_tables() #Garante que as tabelas necessárias existam
+conn = connect_to_db()
 
 myIP, target, MACadd = get_my_info()    #Define IP e Mac address da máquine e coleta rede
 
@@ -114,7 +120,7 @@ for host in nm.all_hosts():
     print(f'{row}\n\n')
 
     if row:
-        if row[0] == mac:
+        if row[3] == mac:
             updates = {"last_online": timestamp}
             db.update_device(conn, row[0], updates)
             continue
