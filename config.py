@@ -4,3 +4,9 @@ DB_CONFIG = {
     'host': '127.0.0.1',
     'database': 'Hydra_monitoring'
 }
+
+community = "Heimdall"  # Comunidade SNMP configurada 
+
+ip_list = [
+        "192.168.0.17",  # IP do Windows desktop
+    ]
