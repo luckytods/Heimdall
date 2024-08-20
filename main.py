@@ -122,7 +122,14 @@ def save_scan_info(conn, host, mac, os):
             service_version = port_info.get('version', 'unknown')
             print(f'Port: {port}\tState: {port_info["state"]}\tService: {service_name}\tVersion: {service_version}')
 
-def scan_ICMP(conn, nm, target, myIP, MACadd):
+def save_ports(conn, host, ports = None):
+    row = db.fetch_by_ip(conn, host)
+    host_id = row[1]
+    db.delete_unused_ports(conn, host_id, ports)
+    new_ports = db.get_ports_not_in_db(conn, host_id, ports)
+    db.add_ports_to_db(conn, host_id, new_ports)
+
+def scan_ICMP(conn, nm, target, myIP, MACadd, db_process_lock):
 
     nm.scan(hosts=target, arguments='-sn') #Primeiro Scan para achar dispositivos conectados apenas
 
@@ -142,19 +149,60 @@ def scan_ICMP(conn, nm, target, myIP, MACadd):
             print(f'MAC Address: {mac}')
         else:
             print('MAC Address: Não encontrado')
-
-        if 'osclass' in nm[host]:
-            for osclass in nm[host]['osclass']:
-                print(f'OS: {osclass["osfamily"]} {osclass["osgen"]} {osclass["osvendor"]} {osclass["osaccuracy"]}%')
-                os = nm[host]['osclass']["osfamily"]
-        else:
-            print(f'Não foi possível detectar o sistema operacional para {host}')
         
         with db_thread_lock:
             save_scan_info(conn, host, mac, os)
 
+    time.sleep(10)
+
 def scan_intenssivo():
-    scan_arguments = "-O -sS -p 1-65535 -T4 --osscan-guess --version-intensity 5"
+    scan_arguments = "-sn -O -sS -p 21,22,23,25,53,80,110,139,143,443,445,3389,3306,5900,8080 -T4 --osscan-guess --version-intensity 5"
+    global hosts
+    nm.scan(hosts=target, arguments = scan_arguments) #Scan intenssivo e demorado. Acho q vou reduzir bem sua frequencia
+
+    for host in nm.all_hosts():
+        print(f'Host: {host}')
+        os = None
+        mac = None
+
+        if 'mac' in nm[host]['addresses']:
+            mac = nm[host]["addresses"]["mac"]
+            print(f'MAC Address: {mac}')
+        elif host == myIP:
+            mac = MACadd
+            print(f'MAC Address: {mac}')
+        else:
+            print('MAC Address: Não encontrado')
+
+        if 'osclass' in nm[host]:
+            print("Detected OS:")
+            for osclass in nm[host]['osclass']:
+                print(f"OS: {osclass['osfamily']}")
+                print(f"Version: {osclass['osgen']}")
+                print(f"Accuracy: {osclass['accuracy']}")
+                os = osclass['osclass']
+        elif 'osmatch' in nm[host]:
+            print("OS Match:")
+            for osmatch in nm[host]['osmatch']:
+                print(f"Name: {osmatch['name']}")
+                print(f"Accuracy: {osmatch['accuracy']}")
+                os = osmatch['name']
+        else:
+            print("No OS information available.")
+
+        open_ports = []
+        if 'tcp' in nm[host]:
+            for port in nm[host]['tcp']:
+                if nm[host]['tcp'][port]['state'] == 'open':
+                    open_ports.append(port)
+
+        
+        with db_thread_lock:
+            save_scan_info(conn, host, mac, os)
+
+    time.sleep(45)
+
+
 
 def snmp_get_value(community, ip, oid):
     """

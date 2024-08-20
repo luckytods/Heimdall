@@ -44,6 +44,13 @@ def create_tables():
             CONSTRAINT `device_metrics_ibfk_1` FOREIGN KEY (`device_id`) REFERENCES `devices` (`id`)
             )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS `device_ports` (
+            `device_id` int NOT NULL,
+            `port` int NOT NULL,
+            FOREIGN KEY (`device_id`) REFERENCES `devices`(`id`) ON DELETE CASCADE
+        )
+    ''')
     conn.commit()
     cursor.close()
     conn.close()
@@ -116,6 +123,17 @@ def fetch_by_id(connection, device_id):
     cursor.close()
     return row
 
+
+def fetch_ip_by_snmp(connection):
+ 
+    cursor = connection.cursor()
+    query = "SELECT ip_address FROM devices WHERE is_snmp_enabled = 1"
+    cursor.execute(query, )
+    ips = cursor.fetchall()
+    cursor.close()
+    return ips
+
+
 def update_device(connection, device_id, updates):
     """
     Atualiza informações de um dispositivo na tabela 'devices' com base no ID.
@@ -139,3 +157,79 @@ def update_device(connection, device_id, updates):
     
     cursor.close()
     print(f"Dispositivo com ID {device_id} atualizado com sucesso.")
+
+def delete_unused_ports(connection, device_id, port_list):
+    """
+    Deleta todas as portas de um dispositivo na tabela 'device_ports' que não estão presentes na lista fornecida.
+    
+    :param connection: Conexão com o banco de dados MySQL.
+    :param device_id: ID do dispositivo cujas portas devem ser filtradas.
+    :param port_list: Lista de portas que devem permanecer associadas ao dispositivo.
+    :return: None
+    """
+    cursor = connection.cursor()
+
+    # Cria uma string com as portas na lista para usar na cláusula IN
+    if port_list:
+        port_list_str = ', '.join(map(str, port_list))
+        # Executa a query de deleção
+        query = f"""
+            DELETE FROM device_ports
+            WHERE device_id = %s AND port NOT IN ({port_list_str})
+        """
+        cursor.execute(query, (device_id,))
+        connection.commit()
+        print(f"Deleted ports not in {port_list} for device_id {device_id}.")
+    else:
+        print(f"No ports provided, skipping deletion for device_id {device_id}.")
+
+    cursor.close()
+
+def get_ports_not_in_db(connection, device_id, port_list):
+    """
+    Retorna uma lista de portas que estão na lista fornecida, mas não estão presentes no banco de dados.
+    
+    :param connection: Conexão com o banco de dados MySQL.
+    :param device_id: ID do dispositivo ao qual as portas devem ser verificadas.
+    :param port_list: Lista de portas que devem ser verificadas.
+    :return: Lista de portas que não estão no banco de dados.
+    """
+    cursor = connection.cursor()
+
+    # Consulta para verificar quais portas já estão na tabela
+    query = f"""
+        SELECT port FROM device_ports 
+        WHERE device_id = %s AND port IN ({', '.join(map(str, port_list))})
+    """
+    
+    cursor.execute(query, (device_id,))
+    existing_ports = set(row[0] for row in cursor.fetchall())
+
+    # Filtra as portas que já existem na tabela
+    new_ports = [port for port in port_list if port not in existing_ports]
+
+    cursor.close()
+    return new_ports
+
+def add_ports_to_db(connection, device_id, port_list):
+    """
+    Adiciona todas as portas da lista fornecida ao banco de dados, associando-as ao dispositivo.
+    
+    :param connection: Conexão com o banco de dados MySQL.
+    :param device_id: ID do dispositivo ao qual as portas devem ser associadas.
+    :param port_list: Lista de portas que devem ser adicionadas ao banco de dados.
+    :return: None
+    """
+    cursor = connection.cursor()
+
+    # Inserir todas as portas na tabela
+    if port_list:
+        insert_query = "INSERT INTO device_ports (device_id, port) VALUES (%s, %s)"
+        cursor.executemany(insert_query, [(device_id, port) for port in port_list])
+        connection.commit()
+        print(f"Inserted ports {port_list} for device_id {device_id}.")
+    else:
+        print(f"No ports to insert for device_id {device_id}.")
+
+    cursor.close()
+
