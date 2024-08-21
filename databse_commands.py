@@ -86,11 +86,17 @@ def fetch_by_ip(connection, ip_address):
     :param ip_address: Endereço IP para buscar.
     :return: Lista de linhas que correspondem ao IP.
     """
+    print(f'Socorro 1.1')
     cursor = connection.cursor()
+    print(f'Socorro 1.2')
     query = "SELECT * FROM devices WHERE ip_address = %s"
+    print(f'Socorro 1.3')
     cursor.execute(query, (ip_address,))
+    print(f'Socorro 1.4')
     rows = cursor.fetchone()
+    print(f'Socorro 1.5')
     cursor.close()
+    print(f'Socorro 1.6')
     return rows
 
 def fetch_by_mac(connection, mac_address):
@@ -196,19 +202,23 @@ def get_ports_not_in_db(connection, device_id, port_list):
     """
     cursor = connection.cursor()
 
-    # Consulta para verificar quais portas já estão na tabela
-    query = f"""
-        SELECT port FROM device_ports 
-        WHERE device_id = %s AND port IN ({', '.join(map(str, port_list))})
-    """
-    
-    cursor.execute(query, (device_id,))
-    existing_ports = set(row[0] for row in cursor.fetchall())
+    if port_list:
+        # Consulta para verificar quais portas já estão na tabela
+        query = f"""
+            SELECT port FROM device_ports 
+            WHERE device_id = %s AND port IN ({', '.join(map(str, port_list))})
+        """
+        
+        cursor.execute(query, (device_id,))
+        existing_ports = set(row[0] for row in cursor.fetchall())
 
-    # Filtra as portas que já existem na tabela
-    new_ports = [port for port in port_list if port not in existing_ports]
+        # Filtra as portas que já existem na tabela
+        new_ports = [port for port in port_list if port not in existing_ports]
 
-    cursor.close()
+        cursor.close()
+    else:
+        print(f"No ports given to work.")
+        return port_list
     return new_ports
 
 def add_ports_to_db(connection, device_id, port_list):

@@ -21,7 +21,7 @@ db_thread_lock = threading.Lock()
 
 db_process_lock = multiprocessing.Lock()
 
-hosts = None
+hosts_list = None
 
 
 #-------------------------------------------------#
@@ -33,6 +33,17 @@ hosts = None
 def encerrar_processo(cod=0):
     print(f'Encerrando processo...')
     exit(cod)
+
+def ips_to_string(ip_list):
+    """
+    Converte uma lista de IPs em uma única string, onde os IPs são separados por vírgulas.
+    
+    :param ip_list: Lista de endereços IP.
+    :return: Uma string com os IPs separados por vírgulas.
+    """
+    print(f'socorro no string')
+    return ' '.join(ip_list)
+
 
 def get_my_info(): #Retorna IP da máquina, o MAC address e a rede
     # Obter informações sobre as interfaces de rede
@@ -89,15 +100,21 @@ def connect_to_db():
 
 def save_scan_info(conn, host, mac, os):
 
+    print(f'Socorro 1')
     timestamp = datetime.now()
-
+    print(f'Socorro 2')
     row = db.fetch_by_ip(conn, host)
+    print(f'Socorro 3')
 
     print(f'{row}\n\n')
 
     if row:
         if row[3] == mac:
-            updates = {"last_online": timestamp}
+            if os == None:
+                updates = {"last_online": timestamp}
+            else:
+                updates = {"last_online": timestamp,
+                           "os": os}
             db.update_device(conn, row[0], updates)
             return
 
@@ -109,32 +126,35 @@ def save_scan_info(conn, host, mac, os):
     
     row = db.fetch_by_mac(conn, mac)
     if row:
-        updates = { "ip_address": host,
-                    "last_online": timestamp}
+        if os == None:
+            updates = { "ip_address": host,
+                        "last_online": timestamp}
+        else:
+            updates = { "ip_address": host,
+                        "os": os,
+                        "last_online": timestamp}
         db.update_device(conn, row[0], updates)
     else:
-        db.insert_device(conn, timestamp, host, 0, mac, os,)
+        db.insert_device(conn, timestamp, host, 0, mac, os)
     
-    if 'tcp' in nm[host]:
-        for port in nm[host]['tcp']:
-            port_info = nm[host]['tcp'][port]
-            service_name = port_info.get('name', 'unknown')
-            service_version = port_info.get('version', 'unknown')
-            print(f'Port: {port}\tState: {port_info["state"]}\tService: {service_name}\tVersion: {service_version}')
 
 def save_ports(conn, host, ports = None):
     row = db.fetch_by_ip(conn, host)
-    host_id = row[1]
+    print(f'row:{row}')
+    host_id = row[0]
+    print(f'ID:{host_id}')
     db.delete_unused_ports(conn, host_id, ports)
     new_ports = db.get_ports_not_in_db(conn, host_id, ports)
     db.add_ports_to_db(conn, host_id, new_ports)
 
-def scan_ICMP(conn, nm, target, myIP, MACadd, db_process_lock):
+def scan_ICMP(nm, target, myIP, MACadd):
 
     nm.scan(hosts=target, arguments='-sn') #Primeiro Scan para achar dispositivos conectados apenas
 
-    global hosts
-    hosts = nm.all_hosts()
+    global hosts_list
+    hosts_list = nm.all_hosts()
+
+    conn = connect_to_db()
 
     for host in nm.all_hosts():
         print(f'Host: {host}')
@@ -150,21 +170,37 @@ def scan_ICMP(conn, nm, target, myIP, MACadd, db_process_lock):
         else:
             print('MAC Address: Não encontrado')
         
-        with db_thread_lock:
-            save_scan_info(conn, host, mac, os)
+        #with db_thread_lock:
+        print(f'antes do save info')
+        save_scan_info(conn, host, mac, os)
 
     time.sleep(10)
 
-def scan_intenssivo():
-    scan_arguments = "-sn -O -sS -p 21,22,23,25,53,80,110,139,143,443,445,3389,3306,5900,8080 -T4 --osscan-guess --version-intensity 5"
-    global hosts
-    nm.scan(hosts=target, arguments = scan_arguments) #Scan intenssivo e demorado. Acho q vou reduzir bem sua frequencia
+def scan_intenssivo(myIP, MACadd):
 
+    nm = nmap.PortScanner()
+
+    print(f'Socorro intenso 1')
+
+    conn = connect_to_db()
+    print(f'Socorro intenso 1')
+
+    scan_arguments = "-O -sS -p 21,22,23,25,53,80,110,139,143,443,445,3389,3306,5900,8080 -T4 --osscan-guess --version-intensity 5"
+    global hosts_list
+    print(f'Socorro intenso 1')
+    target = ips_to_string(hosts_list)
+    print(f'Socorro intenso 1')
+    #target = '192.168.0.1'
+    print(f'{target}')
+
+    nm.scan(hosts = target, arguments = scan_arguments) #Scan intenssivo e demorado. Acho q vou reduzir bem sua frequencia
+    print(f'Antes do for')
+    print(f'Hosts: {nm.all_hosts()}')
     for host in nm.all_hosts():
         print(f'Host: {host}')
         os = None
         mac = None
-
+        print(f'antes do mac')
         if 'mac' in nm[host]['addresses']:
             mac = nm[host]["addresses"]["mac"]
             print(f'MAC Address: {mac}')
@@ -173,33 +209,45 @@ def scan_intenssivo():
             print(f'MAC Address: {mac}')
         else:
             print('MAC Address: Não encontrado')
-
+        
+        print(f'antes do os')
+        accAux1 = 0
+        accAux2 = 0
         if 'osclass' in nm[host]:
             print("Detected OS:")
             for osclass in nm[host]['osclass']:
                 print(f"OS: {osclass['osfamily']}")
                 print(f"Version: {osclass['osgen']}")
                 print(f"Accuracy: {osclass['accuracy']}")
-                os = osclass['osclass']
+                if int(osclass['accuracy']) > int(accAux1):
+                    accAux1 = osclass['accuracy']
+                    os = osclass['osfamily']
         elif 'osmatch' in nm[host]:
             print("OS Match:")
             for osmatch in nm[host]['osmatch']:
                 print(f"Name: {osmatch['name']}")
                 print(f"Accuracy: {osmatch['accuracy']}")
-                os = osmatch['name']
+                if int(osmatch['accuracy']) > int(accAux2):
+                    accAux2 = osmatch['accuracy']
+                    os = osmatch['name']
         else:
             print("No OS information available.")
 
+        print(f'antes da port')
         open_ports = []
         if 'tcp' in nm[host]:
             for port in nm[host]['tcp']:
                 if nm[host]['tcp'][port]['state'] == 'open':
                     open_ports.append(port)
 
-        
+        print(f'antes do lock')
         with db_thread_lock:
+            print(f'lock - antes do save info')
             save_scan_info(conn, host, mac, os)
+            print(f'lock - antes do save ports')
+            save_ports(conn, host, open_ports)
 
+    print(f'Antes do sleep')
     time.sleep(45)
 
 
@@ -256,17 +304,19 @@ conn = connect_to_db()
 myIP, target, MACadd = get_my_info()    #Define IP e Mac address da máquina e coleta rede
 
 #define as threads para compração inicial no loop, porém não inicia
-thread_discovery_scan = threading.Thread(target=scan_ICMP, args=(conn, nm, target, myIP, MACadd))
-thread_exploration_scan = threading.Thread(target=scan_ICMP, args=(conn, nm, target, myIP, MACadd))
+thread_discovery_scan = threading.Thread(target=scan_ICMP, args=(nm, target, myIP, MACadd))
+thread_exploration_scan = threading.Thread(target=scan_intenssivo, args=(conn, nm, myIP, MACadd))
 
 #primeiro scan feito forá do loop para definir a variavel global "hosts"
-scan_ICMP(conn, nm, target, myIP, MACadd)
+scan_ICMP(nm, target, myIP, MACadd)
 
 process_SNMP_monitoring = multiprocessing.Process(target=monitor_device, args=(community, ip_list))
 
 while True:
 
     if not conn.is_connected(): #garante que está conectado ao bd duranto todo o processo.
+
+        print(f'Entrou na area de DB desconectado')
         
         thread_discovery_scan.join()
         thread_exploration_scan.join()
@@ -282,12 +332,14 @@ while True:
         process_SNMP_monitoring = multiprocessing.Process(target=monitor_device, args=(community, ip_list))
 
 
-    if not thread_discovery_scan.is_alive():
-        thread_discovery_scan = threading.Thread(target=scan_ICMP, args=(conn, nm, target, myIP, MACadd))
-        thread_discovery_scan.start()
+    # if not thread_discovery_scan.is_alive():
+    #     print(f'criando thread scan ping')
+    #     thread_discovery_scan = threading.Thread(target=scan_ICMP, args=(nm, target, myIP, MACadd))
+    #     thread_discovery_scan.start()
 
     if not thread_exploration_scan.is_alive():
-        thread_exploration_scan = threading.Thread(target=scan_ICMP, args=(conn, nm, target, myIP, MACadd))
+        print(f'criando thread scan inten')
+        thread_exploration_scan = threading.Thread(target=scan_intenssivo, args=(myIP, MACadd))
         thread_exploration_scan.start()
 
     
