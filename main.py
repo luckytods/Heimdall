@@ -34,16 +34,9 @@ def encerrar_processo(cod=0):
     print(f'Encerrando processo...')
     exit(cod)
 
+#Transforma uma lista em uma string separado por ESPAÇO
 def ips_to_string(ip_list):
-    """
-    Converte uma lista de IPs em uma única string, onde os IPs são separados por vírgulas.
-    
-    :param ip_list: Lista de endereços IP.
-    :return: Uma string com os IPs separados por vírgulas.
-    """
-    print(f'socorro no string')
     return ' '.join(ip_list)
-
 
 def get_my_info(): #Retorna IP da máquina, o MAC address e a rede
     # Obter informações sobre as interfaces de rede
@@ -100,13 +93,8 @@ def connect_to_db():
 
 def save_scan_info(conn, host, mac, os):
 
-    print(f'Socorro 1')
     timestamp = datetime.now()
-    print(f'Socorro 2')
     row = db.fetch_by_ip(conn, host)
-    print(f'Socorro 3')
-
-    print(f'{row}\n\n')
 
     if row:
         if row[3] == mac:
@@ -137,7 +125,6 @@ def save_scan_info(conn, host, mac, os):
     else:
         db.insert_device(conn, timestamp, host, 0, mac, os)
     
-
 def save_ports(conn, host, ports = None):
     row = db.fetch_by_ip(conn, host)
     print(f'row:{row}')
@@ -170,37 +157,29 @@ def scan_ICMP(nm, target, myIP, MACadd):
         else:
             print('MAC Address: Não encontrado')
         
-        #with db_thread_lock:
-        print(f'antes do save info')
-        save_scan_info(conn, host, mac, os)
+        with db_thread_lock:
+            print(f'antes do save info')
+            save_scan_info(conn, host, mac, os)
 
+    print(f'Sleeping for 10 seconds')
     time.sleep(10)
 
 def scan_intenssivo(myIP, MACadd):
 
     nm = nmap.PortScanner()
 
-    print(f'Socorro intenso 1')
-
     conn = connect_to_db()
-    print(f'Socorro intenso 1')
 
     scan_arguments = "-O -sS -p 21,22,23,25,53,80,110,139,143,443,445,3389,3306,5900,8080 -T4 --osscan-guess --version-intensity 5"
     global hosts_list
-    print(f'Socorro intenso 1')
     target = ips_to_string(hosts_list)
-    print(f'Socorro intenso 1')
-    #target = '192.168.0.1'
     print(f'{target}')
 
     nm.scan(hosts = target, arguments = scan_arguments) #Scan intenssivo e demorado. Acho q vou reduzir bem sua frequencia
-    print(f'Antes do for')
-    print(f'Hosts: {nm.all_hosts()}')
     for host in nm.all_hosts():
         print(f'Host: {host}')
         os = None
         mac = None
-        print(f'antes do mac')
         if 'mac' in nm[host]['addresses']:
             mac = nm[host]["addresses"]["mac"]
             print(f'MAC Address: {mac}')
@@ -210,7 +189,6 @@ def scan_intenssivo(myIP, MACadd):
         else:
             print('MAC Address: Não encontrado')
         
-        print(f'antes do os')
         accAux1 = 0
         accAux2 = 0
         if 'osclass' in nm[host]:
@@ -233,34 +211,21 @@ def scan_intenssivo(myIP, MACadd):
         else:
             print("No OS information available.")
 
-        print(f'antes da port')
         open_ports = []
         if 'tcp' in nm[host]:
             for port in nm[host]['tcp']:
                 if nm[host]['tcp'][port]['state'] == 'open':
                     open_ports.append(port)
 
-        print(f'antes do lock')
         with db_thread_lock:
-            print(f'lock - antes do save info')
             save_scan_info(conn, host, mac, os)
-            print(f'lock - antes do save ports')
             save_ports(conn, host, open_ports)
 
-    print(f'Antes do sleep')
+    print(f'Sleeping for 45 seconds')
     time.sleep(45)
 
-
-
 def snmp_get_value(community, ip, oid):
-    """
-    Realiza uma requisição SNMP GET para obter um valor específico de uma OID.
 
-    :param community: A comunidade SNMP (como uma senha) para acessar o dispositivo.
-    :param ip: O endereço IP do dispositivo na rede.
-    :param oid: A OID (Object Identifier) que você deseja consultar.
-    :return: O valor obtido da OID.
-    """
     session = Session(hostname=ip, community=community, version=2)
     try:
         result = session.get(oid)
@@ -270,12 +235,7 @@ def snmp_get_value(community, ip, oid):
         return None
 
 def monitor_device(community, ip):
-    """
-    Monitora um dispositivo na rede usando SNMP para coletar várias métricas.
-
-    :param community: A comunidade SNMP.
-    :param ip: O endereço IP do dispositivo.
-    """
+    
     oids = {
         "sysDescr": "1.3.6.1.2.1.1.1.0",  # Descrição do sistema
         "sysUpTime": "1.3.6.1.2.1.1.3.0",  # Tempo de atividade do sistema
@@ -332,10 +292,10 @@ while True:
         process_SNMP_monitoring = multiprocessing.Process(target=monitor_device, args=(community, ip_list))
 
 
-    # if not thread_discovery_scan.is_alive():
-    #     print(f'criando thread scan ping')
-    #     thread_discovery_scan = threading.Thread(target=scan_ICMP, args=(nm, target, myIP, MACadd))
-    #     thread_discovery_scan.start()
+    if not thread_discovery_scan.is_alive():
+        print(f'criando thread scan ping')
+        thread_discovery_scan = threading.Thread(target=scan_ICMP, args=(nm, target, myIP, MACadd))
+        thread_discovery_scan.start()
 
     if not thread_exploration_scan.is_alive():
         print(f'criando thread scan inten')
