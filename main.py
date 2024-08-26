@@ -38,6 +38,7 @@ def encerrar_processo(cod=0):
 def ips_to_string(ip_list):
     return ' '.join(ip_list)
 
+#Coleta e retorna o Mac, ip e rede deste dispositivo
 def get_my_info(): #Retorna IP da máquina, o MAC address e a rede
     # Obter informações sobre as interfaces de rede
     addrs = psutil.net_if_addrs()
@@ -72,6 +73,7 @@ def get_my_info(): #Retorna IP da máquina, o MAC address e a rede
 
     raise ValueError("Nenhuma interface válida encontrada.")
 
+#Realiza a conexão com o DB de forma controlada
 def connect_to_db():
     #Tenta se conectar ao bd 10 vezes no maximo
     for tentativas in range(10):
@@ -91,6 +93,7 @@ def connect_to_db():
 
     return conn
 
+#Salva informações na tabela devices
 def save_scan_info(conn, host, mac, os):
 
     timestamp = datetime.now()
@@ -125,6 +128,7 @@ def save_scan_info(conn, host, mac, os):
     else:
         db.insert_device(conn, timestamp, host, 0, mac, os)
     
+#Salva informações na tabela device_ports
 def save_ports(conn, host, ports = None):
     row = db.fetch_by_ip(conn, host)
     print(f'row:{row}')
@@ -134,6 +138,7 @@ def save_ports(conn, host, ports = None):
     new_ports = db.get_ports_not_in_db(conn, host_id, ports)
     db.add_ports_to_db(conn, host_id, new_ports)
 
+#função referente ao scan rápido de reconhecimento
 def scan_ICMP(nm, target, myIP, MACadd):
 
     nm.scan(hosts=target, arguments='-sn') #Primeiro Scan para achar dispositivos conectados apenas
@@ -164,6 +169,7 @@ def scan_ICMP(nm, target, myIP, MACadd):
     print(f'Sleeping for 10 seconds')
     time.sleep(10)
 
+#função referente ao scan mais intensivo 
 def scan_intenssivo(myIP, MACadd):
 
     nm = nmap.PortScanner()
@@ -224,6 +230,7 @@ def scan_intenssivo(myIP, MACadd):
     print(f'Sleeping for 45 seconds')
     time.sleep(45)
 
+#função que coleta as informações do dispositivo indicado
 def snmp_get_value(community, ip, oid):
 
     session = Session(hostname=ip, community=community, version=2)
@@ -234,6 +241,7 @@ def snmp_get_value(community, ip, oid):
         print(f"Erro ao obter {oid} de {ip}: {e}")
         return None
 
+#função referente ao monitoramento SNMP
 def monitor_device(community, ip):
     
     oids = {
