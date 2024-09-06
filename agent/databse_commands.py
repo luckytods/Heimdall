@@ -1,6 +1,13 @@
 import mysql.connector
 from mysql.connector import Error
-from config import DB_CONFIG, USER #Arquivo contendo as crdenciais para a conexão
+from config import USER #Arquivo contendo as crdenciais para a conexão
+
+DB_CONFIG = {
+    'user': 'agent_user',
+    'password': 'senhaLegal',
+    'host': 'heimdallmonitoring.chkyymc4suru.us-east-2.rds.amazonaws.com',
+    'database': 'Heimdall_monitoring'
+}
 
 
 user_id = None

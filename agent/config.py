@@ -1,10 +1,3 @@
-DB_CONFIG = {
-    'user': 'agent_user',
-    'password': 'senhaLegal',
-    'host': 'heimdallmonitoring.chkyymc4suru.us-east-2.rds.amazonaws.com',
-    'database': 'Heimdall_monitoring'
-}
-
 USER = {
     'username': 'lucas',
     'password': 'senha123'
