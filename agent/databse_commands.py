@@ -1,6 +1,9 @@
 import mysql.connector
 from mysql.connector import Error
-from config import DB_CONFIG #Arquivo contendo as crdenciais para a conexão
+from config import DB_CONFIG, USER #Arquivo contendo as crdenciais para a conexão
+
+
+user_id = None
 
 #Função que cria e rotorna a conexão com o BD
 def create_connection(): 
@@ -13,57 +16,30 @@ def create_connection():
         print(f"Erro ao conectar ao MySQL: {e}")
     return connection
 
-# Função que garante que as tabelas necessárias existam.
-def create_tables(): 
-    conn = create_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS `devices` (
-            `id` int NOT NULL AUTO_INCREMENT,
-            `device_name` varchar(255) DEFAULT NULL,
-            `ip_address` varchar(45) DEFAULT NULL,
-            `mac_address` varchar(17) DEFAULT NULL,
-            `os` varchar(100) DEFAULT NULL,
-            `last_online` datetime NOT NULL,
-            `is_snmp_enabled` tinyint(1) NOT NULL DEFAULT '0',
-            PRIMARY KEY (`id`),
-            UNIQUE KEY `ip_address` (`ip_address`,`mac_address`)
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS `device_metrics` (
-            `id` int NOT NULL AUTO_INCREMENT,
-            `device_id` int NOT NULL,
-            `recorded_at` datetime NOT NULL,
-            `cpu_temperature` decimal(5,2) DEFAULT NULL,
-            `cpu_usage` decimal(5,2) DEFAULT NULL,
-            `memory_usage` decimal(5,2) DEFAULT NULL,
-            `storage_usage` decimal(5,2) DEFAULT NULL,
-            PRIMARY KEY (`id`),
-            KEY `device_id` (`device_id`),
-            KEY `idx_recorded_at` (`recorded_at`),
-            CONSTRAINT `device_metrics_ibfk_1` FOREIGN KEY (`device_id`) REFERENCES `devices` (`id`)
-            )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS `device_ports` (
-            `device_id` int NOT NULL,
-            `port` int NOT NULL,
-            FOREIGN KEY (`device_id`) REFERENCES `devices`(`id`) ON DELETE CASCADE
-        )
-    ''')
-    conn.commit()
+def execute_login(connection):
+    cursor = connection.cursor()
+
+    query = f"""
+        SELECT id FROM users 
+        WHERE username = %s AND password = %s
+    """
+    cursor.execute(query, (USER.get('username'), USER.get('password')))
+    global user_id
+    user_id = cursor.fetchone()
     cursor.close()
-    conn.close()
+    if user_id != None:
+        return True
+    return False
 
 #Insere um dispositivo novo na tabela devices.
 def insert_device(connection, last_online, ip_address, is_snmp_enabled=0, mac_address=None, os=None, device_name=None):
     cursor = connection.cursor()
+    global user_id
     query = """
-    INSERT INTO devices (device_name, ip_address, mac_address, os, last_online, is_snmp_enabled)
-    VALUES (%s, %s, %s, %s, %s, %s)
+    INSERT INTO devices (created_by, device_name, ip_address, mac_address, os, last_online, is_snmp_enabled)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
-    cursor.execute(query, (device_name, ip_address, mac_address, os, last_online, is_snmp_enabled))
+    cursor.execute(query, (user_id, device_name, ip_address, mac_address, os, last_online, is_snmp_enabled))
     connection.commit()
     print("Dispositivo inserido com sucesso.")
 
@@ -81,8 +57,9 @@ def insert_device_metrics(connection, device_id, recorded_at, cpu_temperature, c
 #Dado o IP, retorna as informações.
 def fetch_by_ip(connection, ip_address):
     cursor = connection.cursor()
-    query = "SELECT * FROM devices WHERE ip_address = %s"
-    cursor.execute(query, (ip_address,))
+    global user_id
+    query = "SELECT * FROM devices WHERE ip_address = %s AND created_by = %s"
+    cursor.execute(query, (ip_address, user_id))
     rows = cursor.fetchone()
     cursor.close()
     return rows
@@ -90,8 +67,9 @@ def fetch_by_ip(connection, ip_address):
 #Dado o MAC, retorna as informações.
 def fetch_by_mac(connection, mac_address):
     cursor = connection.cursor()
-    query = "SELECT * FROM devices WHERE mac_address = %s"
-    cursor.execute(query, (mac_address,))
+    global user_id
+    query = "SELECT * FROM devices WHERE mac_address = %s AND created_by = %s"
+    cursor.execute(query, (mac_address, user_id))
     rows = cursor.fetchone()
     cursor.close()
     return rows
@@ -108,8 +86,9 @@ def fetch_by_id(connection, device_id):
 #Busca os dispositivos marcados para o monitoramento SNMP
 def fetch_ip_by_snmp(connection):
     cursor = connection.cursor()
-    query = "SELECT ip_address FROM devices WHERE is_snmp_enabled = 1"
-    cursor.execute(query, )
+    global user_id
+    query = "SELECT ip_address FROM devices WHERE is_snmp_enabled = 1 AND created_by = %s"
+    cursor.execute(query, (user_id, ) )
     ips = cursor.fetchall()
     cursor.close()
     return ips

@@ -89,10 +89,13 @@ def connect_to_db():
         print(f'Não foi possivel se conectar ao Banco de Dados. Verifique se as informações inseridas em config.py estão corretas.')
         encerrar_processo(1)
 
-    db.create_tables() #Garante que as tabelas necessárias existam
-
-    return conn
-
+    if db.execute_login(conn): #Caso login feito, segue com o programa
+        print(f'\nLogin feito com sucesso.')
+        return conn
+    
+    print(f'\nNome de usuário ou senha inválida. Por favor confira as informações na tela de configuração e tente de novo.\n')
+    encerrar_processo(2)
+    
 #Salva informações na tabela devices
 def save_scan_info(conn, host, mac, os):
 
@@ -100,7 +103,7 @@ def save_scan_info(conn, host, mac, os):
     row = db.fetch_by_ip(conn, host)
 
     if row:
-        if row[3] == mac:
+        if row[4] == mac:
             if os == None:
                 updates = {"last_online": timestamp}
             else:

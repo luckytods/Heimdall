@@ -1,8 +1,13 @@
 DB_CONFIG = {
-    'user': 'admin',
-    'password': '1Ringt0rul3th3mall',
+    'user': 'agent_user',
+    'password': 'senhaLegal',
     'host': 'heimdallmonitoring.chkyymc4suru.us-east-2.rds.amazonaws.com',
     'database': 'Heimdall_monitoring'
+}
+
+USER = {
+    'username': 'lucas',
+    'password': 'senha123'
 }
 
 community = "Heimdall"  # Comunidade SNMP configurada 
