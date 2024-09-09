@@ -35,6 +35,7 @@ def execute_login(connection):
     user_id = cursor.fetchone()
     cursor.close()
     if user_id != None:
+        user_id = user_id[0]
         return True
     return False
 
