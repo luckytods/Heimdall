@@ -105,16 +105,19 @@ def save_scan_info(conn, host, mac, os):
     if row:
         if row[4] == mac:
             if os == None:
-                updates = {"last_online": timestamp}
+                updates = {"last_online": timestamp,
+                           "status": "online"}
             else:
                 updates = {"last_online": timestamp,
-                           "os": os}
+                           "os": os,
+                           "status": "online"}
             db.update_device(conn, row[0], updates)
             return
 
         else:
             updates = { "ip_address": None,
-                        "last_online": timestamp}
+                        "last_online": timestamp,
+                        "status": "online"}
             
             db.update_device(conn, row[0], updates)
     
@@ -122,11 +125,13 @@ def save_scan_info(conn, host, mac, os):
     if row:
         if os == None:
             updates = { "ip_address": host,
-                        "last_online": timestamp}
+                        "last_online": timestamp,
+                        "status": "online"}
         else:
             updates = { "ip_address": host,
                         "os": os,
-                        "last_online": timestamp}
+                        "last_online": timestamp,
+                        "status": "online"}
         db.update_device(conn, row[0], updates)
     else:
         db.insert_device(conn, timestamp, host, 0, mac, os)
@@ -168,9 +173,11 @@ def scan_ICMP(nm, target, myIP, MACadd):
         with db_thread_lock:
             print(f'antes do save info')
             save_scan_info(conn, host, mac, os)
+        
+    db.update_device_status(conn, hosts_list)
 
-    print(f'Sleeping for 10 seconds')
-    time.sleep(10)
+    print(f'Sleeping for 20 seconds')
+    time.sleep(20)
 
 #função referente ao scan mais intensivo 
 def scan_intenssivo(myIP, MACadd):
@@ -230,8 +237,8 @@ def scan_intenssivo(myIP, MACadd):
             save_scan_info(conn, host, mac, os)
             save_ports(conn, host, open_ports)
 
-    print(f'Sleeping for 45 seconds')
-    time.sleep(45)
+    print(f'Sleeping for 60 seconds')
+    time.sleep(60)
 
 #função que coleta as informações do dispositivo indicado
 def snmp_get_value(community, ip, oid):

@@ -168,3 +168,32 @@ def add_ports_to_db(connection, device_id, port_list):
 
     cursor.close()
 
+def update_device_status(connection, ip_list):
+    cursor = connection.cursor()
+    global user_id
+
+    if ip_list:
+        # Atualizar dispositivos de "pendente" para "offline"
+        query_offline = """
+            UPDATE devices
+            SET status = 'offline'
+            WHERE created_by = %s AND status = 'pendente' AND ip_address NOT IN ({})
+        """.format(', '.join(['%s'] * len(ip_list)))
+
+        # Desempacotar os parâmetros: user_id como o primeiro parâmetro e depois os IPs
+        cursor.execute(query_offline, (user_id, *ip_list))
+
+        # Atualizar dispositivos de "online" para "pendente"
+        query_pending = """
+            UPDATE devices
+            SET status = 'pendente'
+            WHERE created_by = %s AND status = 'online' AND ip_address NOT IN ({})
+        """.format(', '.join(['%s'] * len(ip_list)))
+
+        # Desempacotar os parâmetros: user_id como o primeiro parâmetro e depois os IPs
+        cursor.execute(query_pending, (user_id, *ip_list))
+
+        connection.commit()
+        cursor.close()
+    else:
+        print("No IP addresses provided to update.")
