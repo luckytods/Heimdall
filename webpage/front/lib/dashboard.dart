@@ -7,7 +7,8 @@ import 'package:fl_chart/fl_chart.dart';
 class DashboardScreen extends StatefulWidget {
   final int userId; // Parâmetro userId para o construtor
 
-  DashboardScreen({required this.userId});
+  DashboardScreen(
+      {required this.userId}); // Construtor atualizado para receber o userId
 
   @override
   _DashboardScreenState createState() => _DashboardScreenState();
@@ -15,19 +16,24 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   List<Map<String, dynamic>> ipList =
-      []; // Lista de IPs e seus status de conexão
+      []; // Lista de IPs e seu status de conexão
   String? selectedIp;
   String? selectedMac;
   String? selectedOs;
   List<int>? openPorts;
-  bool isEditing = false; // Estado para controle de edição
-  TextEditingController deviceNameController =
-      TextEditingController(); // Controlador para o campo de texto de edição
+  Timer? timer; // Timer para atualizações periódicas
+
+  @override
+  void initState() {
+    super.initState();
+    fetchDevices(); // Busca os dados inicialmente
+    // Configura um timer para atualizar os dados a cada 10 segundos
+    timer = Timer.periodic(Duration(seconds: 5), (Timer t) => fetchDevices());
+  }
 
   @override
   void dispose() {
-    deviceNameController
-        .dispose(); // Limpeza do controlador ao descarregar o widget
+    timer?.cancel(); // Cancela o timer quando o widget é destruído
     super.dispose();
   }
 
@@ -56,39 +62,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     } catch (e) {
       _showError('Erro de conexão: $e');
-    }
-  }
-
-  // Função para salvar o nome do dispositivo no banco de dados
-  Future<void> _saveDeviceName() async {
-    if (selectedIp != null) {
-      String newName = deviceNameController.text;
-      try {
-        var url = Uri.parse(
-            'http://localhost:5000/update-device-name'); // Altere para o endpoint correto da sua API
-        var response = await http.post(
-          url,
-          headers: {'Content-Type': 'application/json'},
-          body: json.encode({'ip': selectedIp, 'new_name': newName}),
-        );
-
-        if (response.statusCode == 200) {
-          setState(() {
-            ipList.firstWhere(
-                    (ip) => ip['ip_address'] == selectedIp)['device_name'] =
-                newName; // Atualiza o nome na lista local
-            isEditing = false; // Sai do modo de edição
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text('Nome do dispositivo atualizado com sucesso!')),
-          );
-        } else {
-          _showError('Falha ao atualizar o nome do dispositivo.');
-        }
-      } catch (e) {
-        _showError('Erro ao conectar-se ao servidor: $e');
-      }
     }
   }
 
@@ -224,88 +197,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment
+                              .center, // Alinha os elementos verticalmente ao centro
                           children: [
-                            if (!isEditing) ...[
-                              RichText(
-                                text: TextSpan(
-                                  text: 'Nome: ',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                  children: [
-                                    TextSpan(
-                                      text: ipList.firstWhere((ip) =>
-                                                  ip['ip_address'] ==
-                                                  selectedIp)['device_name'] !=
-                                              null
-                                          ? ipList
-                                              .firstWhere((ip) =>
-                                                  ip['ip_address'] ==
-                                                  selectedIp)['device_name']
-                                              .toString()
-                                          : '"$selectedIp"',
-                                      style: TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ],
+                            RichText(
+                              text: TextSpan(
+                                text:
+                                    'Nome: ', // Texto "Nome:" antes do nome do dispositivo
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
                                 ),
-                              ),
-                              SizedBox(width: 8),
-                              IconButton(
-                                icon: Icon(Icons.edit, color: Colors.orange),
-                                onPressed: () {
-                                  setState(() {
-                                    isEditing = true; // Ativa o modo de edição
-                                    deviceNameController.text = ipList
-                                            .firstWhere((ip) =>
+                                children: [
+                                  TextSpan(
+                                    text: ipList.firstWhere((ip) =>
                                                 ip['ip_address'] ==
-                                                selectedIp)['device_name']
-                                            ?.toString() ??
-                                        ''; // Preenche o campo de texto com o nome atual
-                                  });
-                                },
-                              ),
-                            ] else ...[
-                              Expanded(
-                                child: TextField(
-                                  controller: deviceNameController,
-                                  style: TextStyle(color: Colors.white),
-                                  decoration: InputDecoration(
-                                    hintText: 'Digite o nome do dispositivo',
-                                    hintStyle: TextStyle(color: Colors.white54),
-                                    filled: true,
-                                    fillColor: Colors.grey[800],
-                                    border: OutlineInputBorder(
-                                      borderSide:
-                                          BorderSide(color: Colors.white),
+                                                selectedIp)['device_name'] !=
+                                            null
+                                        ? ipList.firstWhere((ip) =>
+                                            ip['ip_address'] ==
+                                            selectedIp)['device_name']
+                                        : '"$selectedIp"', // Exibe o nome ou o IP entre aspas
+                                    style: TextStyle(
+                                      fontSize:
+                                          22, // Tamanho da fonte maior para destacar
+                                      fontWeight: FontWeight
+                                          .bold, // Negrito para dar destaque
+                                      color: Colors.white,
                                     ),
                                   ),
-                                ),
+                                ],
                               ),
-                              IconButton(
-                                icon: Icon(Icons.check,
-                                    color: Colors.green), // Botão OK
-                                onPressed: () {
-                                  _saveDeviceName(); // Função para salvar o nome no banco de dados
-                                },
-                              ),
-                              IconButton(
-                                icon: Icon(Icons.cancel,
-                                    color: Colors.red), // Botão Cancelar
-                                onPressed: () {
-                                  setState(() {
-                                    isEditing =
-                                        false; // Cancela a edição e retorna ao modo de visualização
-                                  });
-                                },
-                              ),
-                            ]
+                            ),
+                            SizedBox(
+                                width:
+                                    8), // Espaço pequeno entre o texto e o botão de edição
+                            IconButton(
+                              icon: Icon(Icons.edit,
+                                  color: Colors.orange), // Ícone de lápis
+                              onPressed: () {
+                                // Ação de edição aqui
+                                print('Editar nome do dispositivo');
+                              },
+                            ),
                           ],
                         ),
                         SizedBox(height: 8), // Espaço abaixo do título
