@@ -176,8 +176,8 @@ def scan_ICMP(nm, target, myIP, MACadd):
         
     db.update_device_status(conn, hosts_list)
 
-    print(f'Sleeping for 20 seconds')
-    time.sleep(20)
+    print(f'Sleeping for 10 seconds')
+    time.sleep(10)
 
 #função referente ao scan mais intensivo 
 def scan_intenssivo(myIP, MACadd):
@@ -237,8 +237,8 @@ def scan_intenssivo(myIP, MACadd):
             save_scan_info(conn, host, mac, os)
             save_ports(conn, host, open_ports)
 
-    print(f'Sleeping for 60 seconds')
-    time.sleep(60)
+    print(f'Sleeping for 40 seconds')
+    time.sleep(40)
 
 #função que coleta as informações do dispositivo indicado
 def snmp_get_value(community, ip, oid):

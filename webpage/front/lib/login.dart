@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http; // Pacote HTTP para chamadas de API
-import 'dart:convert'; // Para manipulação de JSON
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'dashboard.dart'; // Importe a página de dashboard
 
 class LoginPage extends StatefulWidget {
@@ -38,10 +38,15 @@ class _LoginPageState extends State<LoginPage> {
         if (response.statusCode == 200) {
           var responseData = json.decode(response.body);
           if (responseData['success'] == true) {
-            // Login bem-sucedido, navegar para o dashboard
+            // Login bem-sucedido, captura o user_id retornado
+            int userId = responseData['user_id'];
+            print('Login bem-sucedido! ID do usuário: $userId');
+
+            // Navegar para o dashboard, passando o user_id como parâmetro
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => DashboardScreen()),
+              MaterialPageRoute(
+                  builder: (context) => DashboardScreen(userId: userId)),
             );
           } else {
             // Exibir mensagem de erro
@@ -85,8 +90,8 @@ class _LoginPageState extends State<LoginPage> {
             children: [
               // Adiciona a logo acima da caixa de login
               Image.asset(
-                '../assets/logo.png', // Substitua 'logo.png' pelo nome da sua imagem
-                height: 200, // Defina a altura da logo conforme necessário
+                'assets/logo.png', // Substitua 'logo.png' pelo nome da sua imagem
+                height: 100, // Defina a altura da logo conforme necessário
               ),
               SizedBox(height: 10), // Espaço entre a logo e o texto
 

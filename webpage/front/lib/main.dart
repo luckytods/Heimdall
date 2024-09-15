@@ -1,8 +1,19 @@
 import 'package:flutter/material.dart';
-import 'login.dart'; // Importe o arquivo do login criado acima
+import 'package:provider/provider.dart';
+import 'user_provider.dart'; // Importe a classe UserProvider
+import 'login.dart';
+import 'dashboard.dart';
 
 void main() {
-  runApp(MyApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+            create: (_) => UserProvider()), // Provedor de estado do usuário
+      ],
+      child: MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -13,7 +24,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: LoginPage(), // Definindo a página de login como a tela inicial
+      home: LoginPage(), // Tela de login como a tela inicial
     );
   }
 }

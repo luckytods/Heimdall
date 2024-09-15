@@ -1,67 +1,102 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 
 class DashboardScreen extends StatefulWidget {
+  final int userId; // Parâmetro userId para o construtor
+
+  DashboardScreen({required this.userId});
+
   @override
   _DashboardScreenState createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  // Lista de IPs e seu status de conexão
-  List<Map<String, dynamic>> ipList = [
-    {
-      'ip': '192.168.0.1',
-      'connected': true,
-      'mac': '00:1B:44:11:3A:B7',
-      'os': 'Windows 10',
-      'ports': [22, 80, 443],
-      'lastOnline': '2024-09-01 14:22',
-    },
-    {
-      'ip': '192.168.0.2',
-      'connected': false,
-      'mac': '00:1B:44:11:3A:C8',
-      'os': 'Linux Ubuntu 20.04',
-      'ports': [21, 8080],
-      'lastOnline': '2024-09-01 14:22',
-    },
-    {
-      'ip': '192.168.0.3',
-      'connected': true,
-      'mac': '00:1B:44:11:3A:D9',
-      'os': 'MacOS 11.2',
-      'ports': [25, 110, 143, 993],
-      'lastOnline': '2024-09-01 14:22',
-    },
-    {
-      'ip': '192.168.0.4',
-      'connected': true,
-      'mac': '00:1B:44:11:3A:AA',
-      'os': 'Windows Server 2016',
-      'ports': [3389, 445],
-      'lastOnline': '2024-09-01 14:22',
-    },
-    {
-      'ip': '192.168.0.5',
-      'connected': false,
-      'mac': '00:1B:44:11:3A:BB',
-      'os': 'FreeBSD 12',
-      'ports': [22, 8081],
-      'lastOnline': '2024-09-01 14:22',
-    },
-  ];
-
+  List<Map<String, dynamic>> ipList =
+      []; // Lista de IPs e seus status de conexão
   String? selectedIp;
   String? selectedMac;
   String? selectedOs;
   List<int>? openPorts;
+  bool isEditing = false; // Estado para controle de edição
+  TextEditingController deviceNameController =
+      TextEditingController(); // Controlador para o campo de texto de edição
 
   @override
-  void initState() {
-    super.initState();
-    // Ordena a lista para que os IPs conectados venham antes dos desconectados
-    ipList.sort(
-        (a, b) => (a['connected'] ? 0 : 1).compareTo(b['connected'] ? 0 : 1));
+  void dispose() {
+    deviceNameController
+        .dispose(); // Limpeza do controlador ao descarregar o widget
+    super.dispose();
+  }
+
+  // Função para buscar dispositivos da API
+  Future<void> fetchDevices() async {
+    try {
+      var url = Uri.parse(
+          'http://localhost:5000/user/devices?user_id=${widget.userId}'); // Altere para o IP do servidor da API, se necessário
+      var response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        var responseData = json.decode(response.body);
+        if (responseData['success'] == true) {
+          setState(() {
+            ipList = List<Map<String, dynamic>>.from(responseData['devices']);
+            // Ordena a lista para que os IPs conectados venham antes dos desconectados
+            ipList.sort((a, b) => (a['status'] == 'online' ? 0 : 1)
+                .compareTo(b['status'] == 'online' ? 0 : 1));
+          });
+        } else {
+          _showError(
+              'Falha ao carregar dispositivos: ${responseData['error']}');
+        }
+      } else {
+        _showError('Erro ao buscar dados: ${response.statusCode}');
+      }
+    } catch (e) {
+      _showError('Erro de conexão: $e');
+    }
+  }
+
+  // Função para salvar o nome do dispositivo no banco de dados
+  Future<void> _saveDeviceName() async {
+    if (selectedIp != null) {
+      String newName = deviceNameController.text;
+      try {
+        var url = Uri.parse(
+            'http://localhost:5000/update-device-name'); // Altere para o endpoint correto da sua API
+        var response = await http.post(
+          url,
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({'ip': selectedIp, 'new_name': newName}),
+        );
+
+        if (response.statusCode == 200) {
+          setState(() {
+            ipList.firstWhere(
+                    (ip) => ip['ip_address'] == selectedIp)['device_name'] =
+                newName; // Atualiza o nome na lista local
+            isEditing = false; // Sai do modo de edição
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('Nome do dispositivo atualizado com sucesso!')),
+          );
+        } else {
+          _showError('Falha ao atualizar o nome do dispositivo.');
+        }
+      } catch (e) {
+        _showError('Erro ao conectar-se ao servidor: $e');
+      }
+    }
+  }
+
+  // Função para exibir mensagens de erro
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
@@ -97,7 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
               SizedBox(height: 20), // Espaço entre a lista de IPs e os gráficos
-              ...ipList.map((ip) => _buildIpCharts(ip['ip'])).toList(),
+              ...ipList.map((ip) => _buildIpCharts(ip['ip_address'])).toList(),
             ],
           ),
         ),
@@ -129,23 +164,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 final ipInfo = ipList[index];
                 return ListTile(
                   leading: Icon(
-                    ipInfo['connected'] ? Icons.check_circle : Icons.cancel,
-                    color: ipInfo['connected'] ? Colors.green : Colors.red,
+                    ipInfo['status'] == 'online'
+                        ? Icons.check_circle
+                        : Icons.cancel,
+                    color: ipInfo['status'] == 'online'
+                        ? Colors.green
+                        : Colors.red,
                   ),
                   title: Text(
-                    ipInfo['ip'],
+                    ipInfo['ip_address'],
                     style: TextStyle(color: Colors.white),
                   ),
                   subtitle: Text(
-                    ipInfo['connected'] ? 'Conectado' : 'Desconectado',
+                    ipInfo['status'] == 'online' ? 'Conectado' : 'Desconectado',
                     style: TextStyle(color: Colors.white70),
                   ),
                   onTap: () {
                     setState(() {
-                      selectedIp = ipInfo['ip'];
-                      selectedMac = ipInfo['mac'];
+                      selectedIp = ipInfo['ip_address'];
+                      selectedMac = ipInfo['mac_address'];
                       selectedOs = ipInfo['os'];
-                      openPorts = ipInfo['ports'];
+                      openPorts = ipInfo['ports'].cast<int>();
                     });
                   },
                 );
@@ -184,20 +223,106 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            if (!isEditing) ...[
+                              RichText(
+                                text: TextSpan(
+                                  text: 'Nome: ',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                  children: [
+                                    TextSpan(
+                                      text: ipList.firstWhere((ip) =>
+                                                  ip['ip_address'] ==
+                                                  selectedIp)['device_name'] !=
+                                              null
+                                          ? ipList
+                                              .firstWhere((ip) =>
+                                                  ip['ip_address'] ==
+                                                  selectedIp)['device_name']
+                                              .toString()
+                                          : '"$selectedIp"',
+                                      style: TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              IconButton(
+                                icon: Icon(Icons.edit, color: Colors.orange),
+                                onPressed: () {
+                                  setState(() {
+                                    isEditing = true; // Ativa o modo de edição
+                                    deviceNameController.text = ipList
+                                            .firstWhere((ip) =>
+                                                ip['ip_address'] ==
+                                                selectedIp)['device_name']
+                                            ?.toString() ??
+                                        ''; // Preenche o campo de texto com o nome atual
+                                  });
+                                },
+                              ),
+                            ] else ...[
+                              Expanded(
+                                child: TextField(
+                                  controller: deviceNameController,
+                                  style: TextStyle(color: Colors.white),
+                                  decoration: InputDecoration(
+                                    hintText: 'Digite o nome do dispositivo',
+                                    hintStyle: TextStyle(color: Colors.white54),
+                                    filled: true,
+                                    fillColor: Colors.grey[800],
+                                    border: OutlineInputBorder(
+                                      borderSide:
+                                          BorderSide(color: Colors.white),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.check,
+                                    color: Colors.green), // Botão OK
+                                onPressed: () {
+                                  _saveDeviceName(); // Função para salvar o nome no banco de dados
+                                },
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.cancel,
+                                    color: Colors.red), // Botão Cancelar
+                                onPressed: () {
+                                  setState(() {
+                                    isEditing =
+                                        false; // Cancela a edição e retorna ao modo de visualização
+                                  });
+                                },
+                              ),
+                            ]
+                          ],
+                        ),
+                        SizedBox(height: 8), // Espaço abaixo do título
                         Text(
                           'IP: $selectedIp',
                           style: TextStyle(color: Colors.white),
                         ),
                         Text(
-                          'MAC: $selectedMac',
+                          'MAC: ${selectedMac ?? 'N/A'}', // Verifica nullidade
                           style: TextStyle(color: Colors.white),
                         ),
                         Text(
-                          'Sistema Operacional: $selectedOs',
+                          'Sistema Operacional: ${selectedOs ?? 'N/A'}', // Verifica nullidade
                           style: TextStyle(color: Colors.white),
                         ),
                         Text(
-                          'Última vez online: ${ipList.firstWhere((ip) => ip['ip'] == selectedIp)['lastOnline']}',
+                          'Última vez online: ${ipList.firstWhere((ip) => ip['ip_address'] == selectedIp)['last_online'] ?? 'Desconhecido'}', // Verifica nullidade
                           style: TextStyle(color: Colors.white),
                         ),
                         SizedBox(height: 8),
