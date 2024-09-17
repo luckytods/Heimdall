@@ -3,7 +3,8 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart'; // Adicione esta linha para formatar a data
+import 'package:intl/intl.dart'; // Para formatação de data
+import 'login.dart'; // Importe a tela de login
 
 class DashboardScreen extends StatefulWidget {
   final int userId; // Parâmetro userId para o construtor
@@ -88,6 +89,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ]
           ],
         ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.power_settings_new,
+                color: Colors.red), // Ícone de logoff
+            onPressed: _logOff, // Função para logoff
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -119,6 +127,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  // Função para fazer logoff e navegar de volta para a tela de login
+  void _logOff() {
+    setState(() {
+      // Aqui você pode limpar o estado e o userId
+    });
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+          builder: (context) =>
+              LoginPage()), // Substitua pela navegação para a tela de login
     );
   }
 

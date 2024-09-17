@@ -198,9 +198,6 @@ def update_device_status(connection, ip_list):
     else:
         print("No IP addresses provided to update.")
 
-
-
-
 def update_agent_timestamp(connection, timestamp):
     cursor = connection.cursor()
     global user_id
@@ -209,9 +206,7 @@ def update_agent_timestamp(connection, timestamp):
     cursor.execute(query, (user_id,))
     row = cursor.fetchone()
 
-    print(f'aaaaaaaaaaaaaaaaaaaaaaaaaaa')
     if row != None:
-        print(f'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')
         # Atualizar dispositivos de "pendente" para "offline"
         query = """
             UPDATE last_agent_update
@@ -220,7 +215,6 @@ def update_agent_timestamp(connection, timestamp):
         """
         cursor.execute(query, (timestamp, user_id))
     else:
-        print(f'cccccccccccccccccccccccccccccc')
         # Atualizar dispositivos de "pendente" para "offline"
         query = """
             INSERT INTO last_agent_update (user_id, update_timestamp)

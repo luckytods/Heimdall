@@ -182,7 +182,67 @@ def agent_status():
             connection.close()
             print("Conexão ao banco de dados fechada.")
 
+@app.route('/check-username', methods=['POST'])
+def check_username():
+    """
+    Endpoint para verificar se um nome de usuário já existe no banco de dados.
+    Espera um JSON com o campo 'username'.
+    """
+    data = request.get_json()
+    username = data.get('username')
 
+    if not username:
+        return jsonify({'exists': False, 'error': 'Nome de usuário é necessário.'}), 400
+
+    connection = connect_db()
+    if not connection:
+        return jsonify({'success': False, 'error': 'Falha na conexão com o banco de dados.'}), 500
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+        result = cursor.fetchone()
+        cursor.close()
+        return jsonify({'exists': bool(result)})
+    except Error as e:
+        print(f"Erro ao verificar o nome de usuário: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if connection.is_connected():
+            connection.close()
+            print("Conexão ao banco de dados fechada.")
+
+@app.route('/create-user', methods=['POST'])
+def create_user():
+    """
+    Endpoint para criar um novo usuário no banco de dados.
+    Espera um JSON com os campos 'username' e 'password'.
+    """
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({'success': False, 'error': 'Nome de usuário e senha são necessários.'}), 400
+
+    connection = connect_db()
+    if not connection:
+        return jsonify({'success': False, 'error': 'Falha na conexão com o banco de dados.'}), 500
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, password))
+        connection.commit()
+        user_id = cursor.lastrowid
+        cursor.close()
+        return jsonify({'success': True, 'user_id': user_id})
+    except Error as e:
+        print(f"Erro ao criar o usuário: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if connection.is_connected():
+            connection.close()
+            print("Conexão ao banco de dados fechada.")
 
 
 if __name__ == '__main__':

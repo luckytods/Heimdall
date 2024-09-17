@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dashboard.dart';
+import 'register.dart'; // Importe a tela de registro
 
 class LoginPage extends StatefulWidget {
   @override
@@ -160,6 +161,25 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ),
                     ],
+                  ),
+                ),
+              ),
+              SizedBox(height: 10),
+              TextButton(
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) =>
+                            RegisterScreen()), // Navega para a tela de registro
+                  );
+                },
+                child: Text(
+                  'Criar novo usuário',
+                  style: TextStyle(
+                    color: Colors.white, // Mesma tonalidade de branco
+                    decoration: TextDecoration
+                        .underline, // Estilo sublinhado para destacar
                   ),
                 ),
               ),
