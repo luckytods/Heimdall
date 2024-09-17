@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dashboard.dart'; // Importe a página de dashboard
+import 'dashboard.dart';
 
 class LoginPage extends StatefulWidget {
   @override
@@ -12,22 +12,20 @@ class _LoginPageState extends State<LoginPage> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  bool _isLoading = false; // Indicador de carregamento para requisição de login
+  bool _isLoading = false;
 
   // Função de login usando API
   void _login() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
-        _isLoading =
-            true; // Mostra um indicador de carregamento enquanto a API é chamada
+        _isLoading = true;
       });
 
       String username = _usernameController.text;
       String password = _passwordController.text;
 
       // Fazendo a requisição para a API de login
-      var url = Uri.parse(
-          'http://localhost:5000/login'); // Altere para o IP do servidor da API se necessário
+      var url = Uri.parse('http://localhost:5000/login');
       try {
         var response = await http.post(
           url,
@@ -38,37 +36,31 @@ class _LoginPageState extends State<LoginPage> {
         if (response.statusCode == 200) {
           var responseData = json.decode(response.body);
           if (responseData['success'] == true) {
-            // Login bem-sucedido, captura o user_id retornado
             int userId = responseData['user_id'];
             print('Login bem-sucedido! ID do usuário: $userId');
 
-            // Navegar para o dashboard, passando o user_id como parâmetro
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
                   builder: (context) => DashboardScreen(userId: userId)),
             );
           } else {
-            // Exibir mensagem de erro
             _showError('Nome de usuário ou senha inválidos');
           }
         } else {
-          // Exibir mensagem de erro para problemas na comunicação com a API
           _showError(
               'Erro na comunicação com o servidor: ${response.statusCode}');
         }
       } catch (e) {
-        // Captura erros de rede
         _showError('Erro ao se conectar ao servidor: $e');
       } finally {
         setState(() {
-          _isLoading = false; // Remove o indicador de carregamento
+          _isLoading = false;
         });
       }
     }
   }
 
-  // Função para exibir mensagens de erro
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
@@ -78,47 +70,37 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[900], // Fundo cinza escuro como o dashboard
-      appBar: AppBar(
-        title: Text('Login'),
-        backgroundColor: Colors.grey[850], // Cor do AppBar igual ao dashboard
-      ),
+      backgroundColor: Colors.grey[900],
       body: Center(
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Adiciona a logo acima da caixa de login
               Image.asset(
-                'assets/logo.png', // Substitua 'logo.png' pelo nome da sua imagem
-                height: 100, // Defina a altura da logo conforme necessário
+                'assets/logo.png',
+                height: 200,
               ),
-              SizedBox(height: 10), // Espaço entre a logo e o texto
-
-              // Adiciona o texto abaixo da logo
+              SizedBox(height: 10),
               Text(
-                'Bem-vindo ao Monitoramento de Rede', // Texto a ser exibido
+                'Heimdall is watching',
                 style: TextStyle(
-                  color: Colors.white, // Cor do texto
-                  fontSize: 18, // Tamanho da fonte
-                  fontWeight: FontWeight.bold, // Estilo da fonte
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              SizedBox(height: 20), // Espaço entre o texto e a caixa de login
-
+              SizedBox(height: 20),
               Container(
-                width:
-                    300, // Largura limitada para centralizar e tornar compacto
+                width: 300,
                 padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
-                  color: Colors.grey[850], // Fundo da caixa de login
+                  color: Colors.grey[850],
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Form(
                   key: _formKey,
                   child: Column(
-                    mainAxisSize:
-                        MainAxisSize.min, // Mantém a altura mínima necessária
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       TextFormField(
                         controller: _usernameController,
@@ -132,8 +114,7 @@ class _LoginPageState extends State<LoginPage> {
                             borderSide: BorderSide(color: Colors.blue),
                           ),
                           filled: true,
-                          fillColor:
-                              Colors.grey[800], // Fundo do campo de texto
+                          fillColor: Colors.grey[800],
                         ),
                         style: TextStyle(color: Colors.white),
                         validator: (value) {
@@ -156,8 +137,7 @@ class _LoginPageState extends State<LoginPage> {
                             borderSide: BorderSide(color: Colors.blue),
                           ),
                           filled: true,
-                          fillColor:
-                              Colors.grey[800], // Fundo do campo de texto
+                          fillColor: Colors.grey[800],
                         ),
                         style: TextStyle(color: Colors.white),
                         obscureText: true,
@@ -170,14 +150,13 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       SizedBox(height: 30),
                       _isLoading
-                          ? CircularProgressIndicator() // Indicador de carregamento
+                          ? CircularProgressIndicator()
                           : ElevatedButton(
                               onPressed: _login,
                               child: Text('Login'),
                               style: ElevatedButton.styleFrom(
                                 foregroundColor: Colors.white,
-                                backgroundColor:
-                                    Colors.blue, // Cor do texto do botão
+                                backgroundColor: Colors.blue,
                               ),
                             ),
                     ],

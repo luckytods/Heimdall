@@ -1,17 +1,17 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS  # Importe o pacote CORS
+from flask_cors import CORS
 import mysql.connector
 from mysql.connector import Error
 
 app = Flask(__name__)
-CORS(app)  # Habilita o CORS para todas as rotas
+CORS(app)
 
-# Configurações do banco de dados MySQL na AWS
+
 db_config = {
-    'host': 'heimdallmonitoring.chkyymc4suru.us-east-2.rds.amazonaws.com',  # Substitua pelo endereço do seu banco de dados MySQL na AWS
-    'database': 'Heimdall_monitoring',  # Nome do banco de dados
-    'user': 'webAPI',  # Substitua pelo seu nome de usuário do MySQL
-    'password': 'senhaLegal'  # Substitua pela sua senha do MySQL
+    'host': 'heimdallmonitoring.chkyymc4suru.us-east-2.rds.amazonaws.com',
+    'database': 'Heimdall_monitoring',
+    'user': 'webAPI',
+    'password': 'senhaLegal'
 }
 
 def connect_db():
@@ -36,7 +36,7 @@ def login():
     username = data.get('username')
     password = data.get('password')
 
-    # Conectar ao banco de dados
+    
     connection = connect_db()
     if not connection:
         print("Falha na conexão ao banco de dados.")
@@ -45,15 +45,14 @@ def login():
     try:
         cursor = connection.cursor(dictionary=True)
         
-        # Consulta SQL para verificar as credenciais do usuário
+        
         query = "SELECT id FROM users WHERE username = %s AND password = %s"
         cursor.execute(query, (username, password))
         user = cursor.fetchone()
         cursor.close()
 
         if user:
-            print(f"Usuário {username} autenticado com sucesso.")
-            # Retorna o ID do usuário junto com a resposta de sucesso
+            print(f"Usuário {username} logado com sucesso.")
             return jsonify({'success': True, 'user_id': user['id']})
         else:
             print(f"Credenciais inválidas para o usuário {username}.")
@@ -68,12 +67,7 @@ def login():
 
 @app.route('/user/devices', methods=['GET'])
 def get_user_devices():
-    """
-    Endpoint para obter a lista de dispositivos (IPs) e suas informações de um usuário específico.
-    Parâmetro de consulta: user_id
-    Retorna JSON com informações sobre os dispositivos.
-    """
-    user_id = request.args.get('user_id')  # Obtém o user_id do parâmetro de consulta
+    user_id = request.args.get('user_id')
     if not user_id:
         return jsonify({'success': False, 'error': 'Parâmetro user_id é necessário.'}), 400
 
@@ -84,8 +78,6 @@ def get_user_devices():
 
     try:
         cursor = connection.cursor(dictionary=True)
-        
-        # Consulta SQL para obter todos os dispositivos de um usuário específico e suas informações
         device_query = """
         SELECT id, device_name, ip_address, mac_address, os, last_online, is_snmp_enabled, status 
         FROM devices
@@ -94,7 +86,6 @@ def get_user_devices():
         cursor.execute(device_query, (user_id,))
         devices = cursor.fetchall()
         
-        # Para cada dispositivo, obter as portas associadas
         for device in devices:
             port_query = "SELECT port FROM device_ports WHERE device_id = %s"
             cursor.execute(port_query, (device['id'],))
@@ -111,7 +102,89 @@ def get_user_devices():
         if connection.is_connected():
             connection.close()
             print("Conexão ao banco de dados fechada.")
+
+
+@app.route('/update-device-name', methods=['POST'])
+def update_device_name():
+    data = request.get_json()
+    ip = data.get('ip')
+    new_name = data.get('new_name')
+
+    if not ip or not new_name:
+        return jsonify({'success': False, 'error': 'Parâmetros "ip" e "new_name" são necessários.'}), 400
+
+    connection = connect_db()
+    if not connection:
+        print("Falha na conexão ao banco de dados.")
+        return jsonify({'success': False, 'error': 'Failed to connect to database'}), 500
+
+    try:
+        cursor = connection.cursor()
+        
+        update_query = "UPDATE devices SET device_name = %s WHERE ip_address = %s"
+        cursor.execute(update_query, (new_name, ip))
+        connection.commit()
+
+        cursor.close()
+        return jsonify({'success': True, 'message': 'Nome do dispositivo atualizado com sucesso.'})
+    except Error as e:
+        print(f"Erro ao atualizar o nome do dispositivo: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if connection.is_connected():
+            connection.close()
+            print("Conexão ao banco de dados fechada.")
             
+
+@app.route('/agent-status', methods=['GET'])
+def agent_status():
+    """
+    Endpoint para obter o timestamp do último update do agente para um dado user_id.
+    Retorna JSON com 'last_updated' (timestamp) ou None se não houver registros.
+    """
+    user_id = request.args.get('user_id')  # Obtém o user_id dos parâmetros da URL
+
+    if not user_id:
+        return jsonify({'success': False, 'error': 'Parâmetro "user_id" é necessário.'}), 400
+
+    connection = connect_db()
+    if not connection:
+        return jsonify({'success': False, 'error': 'Falha na conexão com o banco de dados.'}), 500
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+
+        # Consulta para obter o timestamp do último update do agente para o user_id fornecido
+        query = """
+        SELECT update_timestamp AS last_updated 
+        FROM last_agent_update 
+        WHERE user_id = %s 
+        ORDER BY update_timestamp DESC 
+        LIMIT 1
+        """
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+
+        cursor.close()
+
+        if result and result['last_updated']:
+            # Formata o timestamp para string
+            formatted_last_updated = result['last_updated'].strftime('%Y-%m-%d %H:%M:%S')
+            return jsonify({'last_updated': formatted_last_updated})
+        else:
+            # Nenhum registro encontrado ou timestamp é None
+            return jsonify({'last_updated': None})
+    except Error as e:
+        print(f"Erro ao buscar o timestamp do último update: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if connection.is_connected():
+            connection.close()
+            print("Conexão ao banco de dados fechada.")
+
+
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+

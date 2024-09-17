@@ -3,12 +3,12 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart'; // Adicione esta linha para formatar a data
 
 class DashboardScreen extends StatefulWidget {
   final int userId; // Parâmetro userId para o construtor
 
-  DashboardScreen(
-      {required this.userId}); // Construtor atualizado para receber o userId
+  DashboardScreen({required this.userId});
 
   @override
   _DashboardScreenState createState() => _DashboardScreenState();
@@ -16,60 +16,36 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   List<Map<String, dynamic>> ipList =
-      []; // Lista de IPs e seu status de conexão
+      []; // Lista de IPs e seus status de conexão
   String? selectedIp;
   String? selectedMac;
   String? selectedOs;
   List<int>? openPorts;
+  bool isEditing = false; // Estado para controle de edição
+  TextEditingController deviceNameController =
+      TextEditingController(); // Controlador para o campo de texto de edição
   Timer? timer; // Timer para atualizações periódicas
+  String agentStatus = "offline"; // Estado inicial do status do agente
+  String lastUpdated = ""; // Estado inicial do timestamp do último update
 
   @override
   void initState() {
     super.initState();
     fetchDevices(); // Busca os dados inicialmente
+    fetchAgentStatus(); // Busca o status do agente
     // Configura um timer para atualizar os dados a cada 10 segundos
-    timer = Timer.periodic(Duration(seconds: 5), (Timer t) => fetchDevices());
+    timer = Timer.periodic(Duration(seconds: 10), (Timer t) {
+      fetchDevices();
+      fetchAgentStatus();
+    });
   }
 
   @override
   void dispose() {
     timer?.cancel(); // Cancela o timer quando o widget é destruído
+    deviceNameController
+        .dispose(); // Limpeza do controlador ao descarregar o widget
     super.dispose();
-  }
-
-  // Função para buscar dispositivos da API
-  Future<void> fetchDevices() async {
-    try {
-      var url = Uri.parse(
-          'http://localhost:5000/user/devices?user_id=${widget.userId}'); // Altere para o IP do servidor da API, se necessário
-      var response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        var responseData = json.decode(response.body);
-        if (responseData['success'] == true) {
-          setState(() {
-            ipList = List<Map<String, dynamic>>.from(responseData['devices']);
-            // Ordena a lista para que os IPs conectados venham antes dos desconectados
-            ipList.sort((a, b) => (a['status'] == 'online' ? 0 : 1)
-                .compareTo(b['status'] == 'online' ? 0 : 1));
-          });
-        } else {
-          _showError(
-              'Falha ao carregar dispositivos: ${responseData['error']}');
-        }
-      } else {
-        _showError('Erro ao buscar dados: ${response.statusCode}');
-      }
-    } catch (e) {
-      _showError('Erro de conexão: $e');
-    }
-  }
-
-  // Função para exibir mensagens de erro
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
   }
 
   @override
@@ -77,8 +53,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[900], // Cor de fundo da tela
       appBar: AppBar(
-        title: Text('Monitoramento de Rede'),
         backgroundColor: Colors.grey[850], // Cor de fundo do AppBar
+        title: Row(
+          children: [
+            Text(
+              'Agent Status: ',
+              style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.white), // Cor alterada para o tom de branco
+            ),
+            if (agentStatus == 'online') ...[
+              Icon(Icons.circle,
+                  color: Colors.green, size: 14), // Símbolo de "online"
+              SizedBox(width: 4),
+              Text(
+                'Online',
+                style: TextStyle(color: Colors.green, fontSize: 18),
+              ),
+            ] else ...[
+              Icon(Icons.circle,
+                  color: Colors.red, size: 14), // Símbolo de "offline"
+              SizedBox(width: 4),
+              Text(
+                'Offline', // Mostra "Offline" antes do horário
+                style: TextStyle(color: Colors.red, fontSize: 18),
+              ),
+              SizedBox(width: 4),
+              Text(
+                lastUpdated, // Timestamp formatado do último update
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18), // Mesma cor do texto "Agent Status:"
+              ),
+            ]
+          ],
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -113,63 +122,95 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Método para criar a lista de IPs e seus status de conexão
-  Widget _buildIpStatusList() {
-    return Container(
-      padding: EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.grey[850],
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Status de Conexão dos IPs:',
-            style: TextStyle(
-                fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          SizedBox(height: 8),
-          Expanded(
-            child: ListView.builder(
-              itemCount: ipList.length,
-              itemBuilder: (context, index) {
-                final ipInfo = ipList[index];
-                return ListTile(
-                  leading: Icon(
-                    ipInfo['status'] == 'online'
-                        ? Icons.check_circle
-                        : Icons.cancel,
-                    color: ipInfo['status'] == 'online'
-                        ? Colors.green
-                        : Colors.red,
-                  ),
-                  title: Text(
-                    ipInfo['ip_address'],
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  subtitle: Text(
-                    ipInfo['status'] == 'online' ? 'Conectado' : 'Desconectado',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  onTap: () {
-                    setState(() {
-                      selectedIp = ipInfo['ip_address'];
-                      selectedMac = ipInfo['mac_address'];
-                      selectedOs = ipInfo['os'];
-                      openPorts = ipInfo['ports'].cast<int>();
-                    });
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+  // Função para buscar o status do agente da API
+  Future<void> fetchAgentStatus() async {
+    try {
+      var url = Uri.parse(
+          'http://localhost:5000/agent-status?user_id=${widget.userId}'); // Inclui o user_id como parâmetro
+      var response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        var responseData = json.decode(response.body);
+        setState(() {
+          String? rawLastUpdated =
+              responseData['last_updated']; // Recebe o timestamp ou null
+
+          if (rawLastUpdated != null) {
+            DateTime lastUpdateTime = DateTime.parse(rawLastUpdated);
+            lastUpdated = _formatDateTime(
+                lastUpdateTime); // Formata a data/hora de forma amigável
+            DateTime now = DateTime.now();
+
+            // Determina o status com base na diferença de tempo
+            if (now.difference(lastUpdateTime).inMinutes <= 5) {
+              agentStatus = 'online';
+            } else {
+              agentStatus = 'offline';
+            }
+          } else {
+            agentStatus = 'offline';
+            lastUpdated =
+                '--/--'; // Define como "--/--" se o timestamp estiver ausente
+          }
+        });
+      } else {
+        _showError('Erro ao buscar status do agente: ${response.statusCode}');
+      }
+    } catch (e) {
+      _showError('Erro de conexão ao buscar status do agente: $e');
+    }
+  }
+
+  // Função para formatar a data/hora de uma forma amigável
+  String _formatDateTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} minutos atrás';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours} horas atrás';
+    } else {
+      return DateFormat('dd/MM/yyyy HH:mm')
+          .format(dateTime); // Formato mais detalhado
+    }
+  }
+
+  // Função para exibir mensagens de erro
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
-  // Método para criar a caixa de informações do IP selecionado
+  // Função para buscar dispositivos da API
+  Future<void> fetchDevices() async {
+    try {
+      var url = Uri.parse(
+          'http://localhost:5000/user/devices?user_id=${widget.userId}');
+      var response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        var responseData = json.decode(response.body);
+        if (responseData['success'] == true) {
+          setState(() {
+            ipList = List<Map<String, dynamic>>.from(responseData['devices']);
+            ipList.sort((a, b) => (a['status'] == 'online' ? 0 : 1)
+                .compareTo(b['status'] == 'online' ? 0 : 1));
+          });
+        } else {
+          _showError(
+              'Falha ao carregar dispositivos: ${responseData['error']}');
+        }
+      } else {
+        _showError('Erro ao buscar dados: ${response.statusCode}');
+      }
+    } catch (e) {
+      _showError('Erro de conexão: $e');
+    }
+  }
+
+  // Função para criar a caixa de informações do IP selecionado
   Widget _buildIpDetailsBox() {
     return Container(
       padding: EdgeInsets.all(8),
@@ -197,63 +238,99 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment
-                              .center, // Alinha os elementos verticalmente ao centro
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            RichText(
-                              text: TextSpan(
-                                text:
-                                    'Nome: ', // Texto "Nome:" antes do nome do dispositivo
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                            if (!isEditing) ...[
+                              RichText(
+                                text: TextSpan(
+                                  text: 'Nome: ',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                  children: [
+                                    TextSpan(
+                                      text: ipList.firstWhere((ip) =>
+                                                  ip['ip_address'] ==
+                                                  selectedIp)['device_name'] !=
+                                              null
+                                          ? ipList
+                                              .firstWhere((ip) =>
+                                                  ip['ip_address'] ==
+                                                  selectedIp)['device_name']
+                                              .toString()
+                                          : '"$selectedIp"',
+                                      style: TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                children: [
-                                  TextSpan(
-                                    text: ipList.firstWhere((ip) =>
+                              ),
+                              SizedBox(width: 8),
+                              IconButton(
+                                icon: Icon(Icons.edit, color: Colors.orange),
+                                onPressed: () {
+                                  setState(() {
+                                    isEditing = true; // Ativa o modo de edição
+                                    deviceNameController.text = ipList
+                                            .firstWhere((ip) =>
                                                 ip['ip_address'] ==
-                                                selectedIp)['device_name'] !=
-                                            null
-                                        ? ipList.firstWhere((ip) =>
-                                            ip['ip_address'] ==
-                                            selectedIp)['device_name']
-                                        : '"$selectedIp"', // Exibe o nome ou o IP entre aspas
-                                    style: TextStyle(
-                                      fontSize:
-                                          22, // Tamanho da fonte maior para destacar
-                                      fontWeight: FontWeight
-                                          .bold, // Negrito para dar destaque
-                                      color: Colors.white,
+                                                selectedIp)['device_name']
+                                            ?.toString() ??
+                                        '';
+                                  });
+                                },
+                              ),
+                            ] else ...[
+                              Expanded(
+                                child: TextField(
+                                  controller: deviceNameController,
+                                  style: TextStyle(color: Colors.white),
+                                  decoration: InputDecoration(
+                                    hintText: 'Digite o nome do dispositivo',
+                                    hintStyle: TextStyle(color: Colors.white54),
+                                    filled: true,
+                                    fillColor: Colors.grey[800],
+                                    border: OutlineInputBorder(
+                                      borderSide:
+                                          BorderSide(color: Colors.white),
                                     ),
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                            SizedBox(
-                                width:
-                                    8), // Espaço pequeno entre o texto e o botão de edição
-                            IconButton(
-                              icon: Icon(Icons.edit,
-                                  color: Colors.orange), // Ícone de lápis
-                              onPressed: () {
-                                // Ação de edição aqui
-                                print('Editar nome do dispositivo');
-                              },
-                            ),
+                              IconButton(
+                                icon: Icon(Icons.check, color: Colors.green),
+                                onPressed: () {
+                                  _saveDeviceName(); // Função para salvar o nome no bd
+                                },
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.cancel, color: Colors.red),
+                                onPressed: () {
+                                  setState(() {
+                                    isEditing =
+                                        false; // Cancela a edição e retorna ao modo de visualização
+                                  });
+                                },
+                              ),
+                            ]
                           ],
                         ),
-                        SizedBox(height: 8), // Espaço abaixo do título
+                        SizedBox(height: 8),
                         Text(
                           'IP: $selectedIp',
                           style: TextStyle(color: Colors.white),
                         ),
                         Text(
-                          'MAC: ${selectedMac ?? 'N/A'}', // Verifica nullidade
+                          'MAC: ${selectedMac ?? 'N/A'}',
                           style: TextStyle(color: Colors.white),
                         ),
                         Text(
-                          'Sistema Operacional: ${selectedOs ?? 'N/A'}', // Verifica nullidade
+                          'Sistema Operacional: ${selectedOs ?? 'N/A'}',
                           style: TextStyle(color: Colors.white),
                         ),
                         Text(
@@ -295,7 +372,112 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Método para criar um conjunto de gráficos lado a lado para cada IP
+  // Função para salvar o nome do dispositivo no banco de dados
+  Future<void> _saveDeviceName() async {
+    if (selectedIp != null) {
+      String newName = deviceNameController.text;
+      try {
+        var url = Uri.parse('http://localhost:5000/update-device-name');
+        var response = await http.post(
+          url,
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({'ip': selectedIp, 'new_name': newName}),
+        );
+
+        if (response.statusCode == 200) {
+          setState(() {
+            ipList.firstWhere(
+                    (ip) => ip['ip_address'] == selectedIp)['device_name'] =
+                newName;
+            isEditing = false; // Sai do modo de edição
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('Nome do dispositivo atualizado com sucesso!')),
+          );
+        } else {
+          _showError('Falha ao atualizar o nome do dispositivo.');
+        }
+      } catch (e) {
+        _showError('Erro ao conectar-se ao servidor: $e');
+      }
+    }
+  }
+
+  // Método para criar a lista de IPs e seus status de conexão
+  Widget _buildIpStatusList() {
+    return Container(
+      padding: EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.grey[850],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Status de Conexão dos IPs:',
+            style: TextStyle(
+                fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          SizedBox(height: 8),
+          Expanded(
+            child: ListView.builder(
+              itemCount: ipList.length,
+              itemBuilder: (context, index) {
+                final ipInfo = ipList[index];
+                final ipAddress = ipInfo['ip_address'];
+                final deviceName = ipInfo['device_name']; // Nome do dispositivo
+                return ListTile(
+                  leading: Icon(
+                    ipInfo['status'] == 'online'
+                        ? Icons.check_circle
+                        : Icons.cancel,
+                    color: ipInfo['status'] == 'online'
+                        ? Colors.green
+                        : Colors.red,
+                  ),
+                  title: Row(
+                    children: [
+                      Text(
+                        ipAddress, // Exibe o IP
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                      if (deviceName != null && deviceName.isNotEmpty) ...[
+                        SizedBox(
+                            width:
+                                8), // Espaço entre o IP e o nome do dispositivo
+                        Text(
+                          '($deviceName)', // Exibe o nome do dispositivo ao lado do IP
+                          style: TextStyle(
+                            color: Colors.white70, // Cor levemente mais escura
+                            fontSize: 14, // Fonte levemente menor
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  subtitle: Text(
+                    ipInfo['status'] == 'online' ? 'Conectado' : 'Desconectado',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                  onTap: () {
+                    setState(() {
+                      selectedIp = ipInfo['ip_address'];
+                      selectedMac = ipInfo['mac_address'];
+                      selectedOs = ipInfo['os'];
+                      openPorts = ipInfo['ports'].cast<int>();
+                    });
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildIpCharts(String ip) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -310,8 +492,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Expanded(
               child: Container(
-                color: Colors.grey[
-                    800], // Cor de fundo levemente mais clara para o gráfico
+                color: Colors.grey[800],
                 child: Column(
                   children: [
                     Text(
@@ -329,8 +510,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             SizedBox(width: 16), // Espaço entre os gráficos
             Expanded(
               child: Container(
-                color: Colors.grey[
-                    800], // Cor de fundo levemente mais clara para o gráfico
+                color: Colors.grey[800],
                 child: Column(
                   children: [
                     Text(
@@ -347,7 +527,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
-        SizedBox(height: 32), // Espaçamento entre os conjuntos de gráficos
+        SizedBox(height: 32),
       ],
     );
   }
@@ -358,8 +538,7 @@ class LineChartWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return LineChart(
       LineChartData(
-        backgroundColor: Colors
-            .transparent, // Fundo transparente para combinar com o contêiner
+        backgroundColor: Colors.transparent,
         gridData: FlGridData(
           show: true,
           drawVerticalLine: true,
@@ -383,15 +562,15 @@ class LineChartWidget extends StatelessWidget {
             ],
             isCurved: true,
             barWidth: 2,
-            color: Colors.orange, // Cor laranja para as linhas do gráfico
+            color: Colors.orange,
             dotData: FlDotData(
               show: true,
               getDotPainter: (spot, percent, barData, index) =>
                   FlDotCirclePainter(
-                radius: 3, // Tamanho do ponto
-                color: Colors.orange, // Cor do ponto
+                radius: 3,
+                color: Colors.orange,
                 strokeWidth: 1.5,
-                strokeColor: Colors.white, // Cor da borda do ponto
+                strokeColor: Colors.white,
               ),
             ),
           ),
@@ -406,8 +585,7 @@ class BarChartWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return BarChart(
       BarChartData(
-        backgroundColor: Colors
-            .transparent, // Fundo transparente para combinar com o contêiner
+        backgroundColor: Colors.transparent,
         alignment: BarChartAlignment.spaceBetween,
         barGroups: [
           BarChartGroupData(

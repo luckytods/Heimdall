@@ -101,6 +101,7 @@ def save_scan_info(conn, host, mac, os):
 
     timestamp = datetime.now()
     row = db.fetch_by_ip(conn, host)
+    db.update_agent_timestamp(conn, timestamp)
 
     if row:
         if row[4] == mac:
@@ -173,8 +174,6 @@ def scan_ICMP(nm, target, myIP, MACadd):
         with db_thread_lock:
             print(f'antes do save info')
             save_scan_info(conn, host, mac, os)
-        
-    db.update_device_status(conn, hosts_list)
 
     print(f'Sleeping for 10 seconds')
     time.sleep(10)

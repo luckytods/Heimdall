@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'user_provider.dart'; // Importe a classe UserProvider
+import 'user_provider.dart';
 import 'login.dart';
-import 'dashboard.dart';
+//import 'dashboard.dart';
 
 void main() {
   runApp(
