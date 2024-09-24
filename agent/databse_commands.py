@@ -51,17 +51,6 @@ def insert_device(connection, last_online, ip_address, is_snmp_enabled=0, mac_ad
     connection.commit()
     print("Dispositivo inserido com sucesso.")
 
-#Insere métricas de um dispositivo na tabela device_metrics.
-def insert_device_metrics(connection, device_id, recorded_at, cpu_temperature, cpu_usage, memory_usage, storage_usage):
-    cursor = connection.cursor()
-    query = """
-    INSERT INTO device_metrics (device_id, recorded_at, cpu_temperature, cpu_usage, memory_usage, storage_usage)
-    VALUES (%s, %s, %s, %s, %s, %s)
-    """
-    cursor.execute(query, (device_id, recorded_at, cpu_temperature, cpu_usage, memory_usage, storage_usage))
-    connection.commit()
-    print("Métricas do dispositivo inseridas com sucesso.")
-
 #Dado o IP, retorna as informações.
 def fetch_by_ip(connection, ip_address):
     cursor = connection.cursor()
@@ -95,7 +84,7 @@ def fetch_by_id(connection, device_id):
 def fetch_ip_by_snmp(connection):
     cursor = connection.cursor()
     global user_id
-    query = "SELECT ip_address FROM devices WHERE is_snmp_enabled = 1 AND created_by = %s"
+    query = "SELECT id, ip_address FROM devices WHERE is_snmp_enabled = 1 AND created_by = %s"
     cursor.execute(query, (user_id, ) )
     ips = cursor.fetchall()
     cursor.close()
@@ -224,3 +213,26 @@ def update_agent_timestamp(connection, timestamp):
 
     connection.commit()
     cursor.close()
+
+
+def insert_bandwidth_monitoring(connection, device_id, timestamp, download_usage, upload_usage):
+    cursor = connection.cursor()
+    query = """
+    INSERT INTO bandwidth_monitoring (device_id, timestamp, download_usage, upload_usage)
+    VALUES (%s, %s, %s, %s)
+    """
+    cursor.execute(query, (device_id, timestamp, download_usage, upload_usage))
+    connection.commit()
+    print("Dados inseridos com sucesso.")
+
+def check_snmp(connection, id):
+    cursor = connection.cursor()
+
+    query = f"""
+        SELECT * FROM devices 
+        WHERE id = %s AND is_snmp_enabled = 1
+    """
+    cursor.execute(query, (id, ))
+    check = cursor.fetchone()
+    cursor.close()
+    return check

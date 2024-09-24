@@ -1,15 +1,14 @@
 import nmap
 import psutil
-import sched
 import time
 import socket
 import struct
 import threading
 import multiprocessing
-from easysnmp import Session, snmp_get, snmp_walk
+from easysnmp import Session
 from datetime import datetime
 import databse_commands as db
-from config import community, ip_list
+from config import community
 
 
 #-------------------------------------------------#
@@ -239,35 +238,112 @@ def scan_intenssivo(myIP, MACadd):
     print(f'Sleeping for 40 seconds')
     time.sleep(40)
 
-#função que coleta as informações do dispositivo indicado
-def snmp_get_value(community, ip, oid):
+# Função para coletar o uso de banda larga
+def collect_bandwidth_usage(session, oid_in_octets, oid_out_octets ):
 
-    session = Session(hostname=ip, community=community, version=2)
+    interval = 20
+
     try:
-        result = session.get(oid)
-        return result.value
-    except Exception as e:
-        print(f"Erro ao obter {oid} de {ip}: {e}")
-        return None
-
-#função referente ao monitoramento SNMP
-def monitor_device(community, ip):
+        # Obter os valores atuais de bytes recebidos e enviados
+        in_octets = int(session.get(oid_in_octets).value)
+        out_octets = int(session.get(oid_out_octets).value)
+        
+        # Pausar por um intervalo de tempo
+        time.sleep(interval)
+        
+        # Obter os valores de bytes recebidos e enviados após o intervalo
+        in_octets_new = int(session.get(oid_in_octets).value)
+        out_octets_new = int(session.get(oid_out_octets).value)
+        
+        # Calcular a diferença para obter o uso durante o intervalo
+        in_usage = (in_octets_new - in_octets) / interval  # Bytes recebidos por segundo
+        out_usage = (out_octets_new - out_octets) / interval  # Bytes enviados por segundo
+        
+        # Converter para Kilobits por segundo (kbps)
+        in_kbps = (in_usage * 8) / 1024
+        out_kbps = (out_usage * 8) / 1024
+        
+        return in_kbps, out_kbps
     
-    oids = {
-        "sysDescr": "1.3.6.1.2.1.1.1.0",  # Descrição do sistema
-        "sysUpTime": "1.3.6.1.2.1.1.3.0",  # Tempo de atividade do sistema
-    }
+    except Exception as e:
+        print(f'Erro ao coletar o uso de banda: {e}')
+        return None, None
+    
 
-    print(f"Monitorando dispositivo {ip}...")
+def save_bandwidth_monitoring(conn, device_id, in_kbps, out_kbps):
+    timestamp = datetime.now()
+    db.insert_bandwidth_monitoring(conn, device_id, timestamp, in_kbps, out_kbps)
 
-    for key, oid in oids.items():
-        value = snmp_get_value(community, ip, oid)
-        if value is not None:
-            print(f"{key}: {value}")
+# Monitorar o uso de banda larga
+def monitor_bandwidth_usage(target_id, target, community):
+    conn = connect_to_db()
+    device_info = db.check_snmp(conn, target_id)
+
+    # OIDs de 32 bits para bytes recebidos e enviados na interface (use o índice correto da interface)
+    oid_in_octets_start = '1.3.6.1.2.1.2.2.1.10.'  # ifInOctets
+    oid_out_octets_start = '1.3.6.1.2.1.2.2.1.16.'  # ifOutOctets
+
+    if device_info[10] != None:
+        aux = device_info[10]
+        oid_in_octets = f'{oid_in_octets_start}{aux}'
+        oid_out_octets = f'{oid_out_octets_start}{aux}'
+        flag = False
+    
+    else:
+        flag = True
+        aux = 0
+        oid_in_octets = f'{oid_in_octets_start}{aux}'
+        oid_out_octets = f'{oid_out_octets_start}{aux}'
+
+    session = Session(hostname=target, community=community, version=2)
+    while True:
+        in_kbps, out_kbps = collect_bandwidth_usage(session, oid_in_octets, oid_out_octets)
+
+        if (in_kbps is not None and out_kbps is not None) and (in_kbps > 0.0 and out_kbps > 0.0):
+            print(f'Download: {in_kbps:.2f} kbps | Upload: {out_kbps:.2f} kbps')
+            save_bandwidth_monitoring(conn, target_id, in_kbps, out_kbps)
+            if flag:
+                updates = {"bandwidth_oid_index":aux}
+                db.update_device(conn, target_id, updates)
+                flag = False
+
         else:
-            print(f"Falha ao obter {key} do dispositivo {ip}")
+            print('Erro ao obter dados')
+            if device_info[8] == "online":
+                if flag:
+                    aux = aux+1
+                    oid_in_octets = f'{oid_in_octets_start}{aux}'
+                    oid_out_octets = f'{oid_out_octets_start}{aux}'
+                else:
+                    updates = {"bandwidth_oid_index":None}
+                    db.update_device(conn, target_id, updates)
+                    aux = 0
+                    flag = True
 
+        if db.check_snmp(conn, target_id) == None:
+            break
 
+def SNMP_monitoring(community):
+    # Configurações SNMP
+    ip = '192.168.0.199'  # IP do dispositivo
+    conn = connect_to_db()
+    targets = db.fetch_ip_by_snmp(conn)
+    print(f'{targets}')
+    threads =[]
+    for i in range(len(targets)):
+        thread = threading.Thread(target=monitor_bandwidth_usage, args=(targets[i][0], targets[i][1], community))
+        threads.append(thread)
+        thread.start()
+    
+    while True:
+        targets_aux = db.fetch_ip_by_snmp(conn)
+        for i in range(len(targets_aux)):
+            if targets_aux[i] not in targets:
+                thread = threading.Thread(target=monitor_bandwidth_usage, args=(targets_aux[i][0], targets_aux[i][1], community))
+                threads.append(thread)
+                thread.start()
+        targets = targets_aux
+        time.sleep(10)
 
 #-------------------------------------------------#
 #-----------------Função main---------------------#
@@ -287,7 +363,8 @@ thread_exploration_scan = threading.Thread(target=scan_intenssivo, args=(conn, n
 #primeiro scan feito forá do loop para definir a variavel global "hosts"
 scan_ICMP(nm, target, myIP, MACadd)
 
-process_SNMP_monitoring = multiprocessing.Process(target=monitor_device, args=(community, ip_list))
+process_SNMP_monitoring = multiprocessing.Process(target=SNMP_monitoring, args=(community,))
+process_SNMP_monitoring.start()
 
 while True:
 
@@ -306,7 +383,8 @@ while True:
         print(f'\n\nConexão com o Banco de dados perdida. Tentando reconectar...\n')
         conn = connect_to_db()
         myIP, target, MACadd = get_my_info()
-        process_SNMP_monitoring = multiprocessing.Process(target=monitor_device, args=(community, ip_list))
+        process_SNMP_monitoring = multiprocessing.Process(target=SNMP_monitoring, args=(community))
+        process_SNMP_monitoring.start()
 
 
     if not thread_discovery_scan.is_alive():

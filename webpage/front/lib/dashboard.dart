@@ -163,7 +163,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             DateTime now = DateTime.now();
 
             // Determina o status com base na diferença de tempo
-            if (now.difference(lastUpdateTime).inMinutes <= 5) {
+            if (now.difference(lastUpdateTime).inSeconds <= 30) {
               agentStatus = 'online';
             } else {
               agentStatus = 'offline';
