@@ -44,10 +44,6 @@ class ConfigApp:
         )
         show_community_cb.grid(row=1, column=1, padx=5, pady=5, sticky="w")
 
-        ttk.Label(snmp_frame, text="IPs SNMP (separados por vírgula):").grid(row=2, column=0, padx=5, pady=5, sticky="e")
-        self.snmp_ips = ttk.Entry(snmp_frame)
-        self.snmp_ips.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
-
         ###################################################################################################
 
         # Botão de Salvar
@@ -78,7 +74,6 @@ class ConfigApp:
         self.username.insert(0, config.USER.get('username', ''))
         self.password.insert(0, config.USER.get('password', ''))
         self.snmp_community.insert(0, config.community)
-        self.snmp_ips.insert(0, ",".join(config.ip_list))
 
     def save_config(self):
         user_config = {
@@ -86,12 +81,10 @@ class ConfigApp:
             'password': self.password.get()
         }
         snmp_community = self.snmp_community.get()
-        snmp_ips = self.snmp_ips.get().split(',')
 
         with open("config.py", "w") as config_file:
             config_file.write(f"USER = {user_config}\n")
             config_file.write(f"community = '{snmp_community}'\n")
-            config_file.write(f"ip_list = {snmp_ips}\n")
 
         print("Configurações Salvas com Sucesso!")
 

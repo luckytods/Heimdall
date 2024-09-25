@@ -216,6 +216,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (responseData['success'] == true) {
           setState(() {
             ipList = List<Map<String, dynamic>>.from(responseData['devices']);
+
+            // Ordena os dispositivos: online primeiro, offline depois
             ipList.sort((a, b) => (a['status'] == 'online' ? 0 : 1)
                 .compareTo(b['status'] == 'online' ? 0 : 1));
           });
@@ -258,6 +260,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Nome do dispositivo e botão de edição
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
@@ -342,6 +345,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ],
                         ),
                         SizedBox(height: 8),
+                        // Informação sobre o monitoramento SNMP
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Monitoramento por SNMP:',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(width: 8),
+                            // Botão para mostrar o status do SNMP
+                            ElevatedButton(
+                              onPressed: () {
+                                _showSnmpDialog();
+                              },
+                              child: Text(
+                                ipList.firstWhere((ip) =>
+                                            ip['ip_address'] ==
+                                            selectedIp)['is_snmp_enabled'] ==
+                                        1
+                                    ? 'Ativado'
+                                    : 'Desativado',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: ipList.firstWhere((ip) =>
+                                            ip['ip_address'] ==
+                                            selectedIp)['is_snmp_enabled'] ==
+                                        1
+                                    ? Colors.green
+                                    : Colors.red,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8),
                         Text(
                           'IP: $selectedIp',
                           style: TextStyle(color: Colors.white),
@@ -356,6 +398,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         Text(
                           'Última vez online: ${ipList.firstWhere((ip) => ip['ip_address'] == selectedIp)['last_online'] ?? 'Desconhecido'}', // Verifica nullidade
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        // Adicionando a exibição de 'first_online'
+                        Text(
+                          'Primeira vez online: ${ipList.firstWhere((ip) => ip['ip_address'] == selectedIp)['first_online'] ?? 'Desconhecido'}', // Verifica nullidade
                           style: TextStyle(color: Colors.white),
                         ),
                         SizedBox(height: 8),
@@ -391,6 +438,116 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
     );
+  }
+
+// Função para mostrar o pop-up de SNMP
+  void _showSnmpDialog() {
+    final isSnmpEnabled = ipList
+        .firstWhere((ip) => ip['ip_address'] == selectedIp)['is_snmp_enabled'];
+    final textController = TextEditingController();
+    final confirmationText = isSnmpEnabled == 1 ? 'DESATIVAR' : 'ATIVAR';
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            return AlertDialog(
+              backgroundColor: Colors.grey[850],
+              title: Text(
+                isSnmpEnabled == 1
+                    ? 'Desativar Monitoramento por SNMP'
+                    : 'Ativar Monitoramento por SNMP',
+                style: TextStyle(color: Colors.white),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isSnmpEnabled == 1
+                        ? 'Ao continuar você está confirmando que deseja desativar o monitoramento por SNMP deste dispositivo.'
+                        : 'Ao continuar você confirma que deseja iniciar o monitoramento por SNMP deste dispositivo e que o mesmo está devidamente configurado para isso.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    "Digite '$confirmationText' para confirmar sua escolha.",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  SizedBox(height: 10),
+                  TextField(
+                    controller: textController,
+                    style: TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Digite $confirmationText',
+                      hintStyle: TextStyle(color: Colors.white54),
+                      filled: true,
+                      fillColor: Colors.grey[800],
+                      border: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white),
+                      ),
+                    ),
+                    onChanged: (value) {
+                      setState(
+                          () {}); // Atualiza o estado para verificar a entrada
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  child: Text('Cancelar', style: TextStyle(color: Colors.red)),
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Fecha o pop-up
+                  },
+                ),
+                ElevatedButton(
+                  child: Text('Confirmar'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isSnmpEnabled == 1
+                        ? const Color.fromARGB(255, 236, 132, 34)
+                        : Colors.green,
+                  ),
+                  onPressed: textController.text == confirmationText
+                      ? () {
+                          _updateSnmpStatus(isSnmpEnabled == 1 ? 0 : 1);
+                          Navigator.of(context).pop(); // Fecha o pop-up
+                        }
+                      : null, // Desabilita o botão se o texto não estiver correto
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+// Função para atualizar o status do SNMP
+  Future<void> _updateSnmpStatus(int newStatus) async {
+    try {
+      var url = Uri.parse('http://localhost:5000/update-snmp-status');
+      var response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'ip': selectedIp, 'is_snmp_enabled': newStatus}),
+      );
+
+      if (response.statusCode == 200) {
+        setState(() {
+          ipList.firstWhere(
+                  (ip) => ip['ip_address'] == selectedIp)['is_snmp_enabled'] =
+              newStatus; // Atualiza o status na lista
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Status do SNMP atualizado com sucesso!')),
+        );
+      } else {
+        _showError('Falha ao atualizar o status do SNMP.');
+      }
+    } catch (e) {
+      _showError('Erro ao conectar-se ao servidor: $e');
+    }
   }
 
   // Função para salvar o nome do dispositivo no banco de dados

@@ -1,4 +1,5 @@
 import nmap
+import re
 import psutil
 import time
 import socket
@@ -104,7 +105,7 @@ def save_scan_info(conn, host, mac, os):
 
     if row:
         if row[4] == mac:
-            if os == None:
+            if (os == None) or (row[5] != None and row[7] == 1):
                 updates = {"last_online": timestamp,
                            "status": "online"}
             else:
@@ -123,7 +124,7 @@ def save_scan_info(conn, host, mac, os):
     
     row = db.fetch_by_mac(conn, mac)
     if row:
-        if os == None:
+        if (os == None) or (row[5] != None and row[7] == 1):
             updates = { "ip_address": host,
                         "last_online": timestamp,
                         "status": "online"}
@@ -269,6 +270,44 @@ def collect_bandwidth_usage(session, oid_in_octets, oid_out_octets ):
         print(f'Erro ao coletar o uso de banda: {e}')
         return None, None
     
+def collect_SO_info(session):
+    oid_sys_descr = '1.3.6.1.2.1.1.1.0'
+    try:
+        # Coletar sysDescr
+        sys_descr = session.get(oid_sys_descr).value
+        # Filtrar apenas a parte de software do sistema usando expressões regulares
+        # Esta regex é apenas um exemplo e pode precisar de ajustes dependendo da string retornada
+        so_info = re.search(r'Software: (.*)', sys_descr)
+        if so_info:
+            return so_info.group(1)  # Retorna apenas a parte de software
+        else:
+            return "Informação de software não encontrada."
+    except Exception as e:
+        print(f'Erro ao coletar informações: {e}')
+        return None
+    
+def collect_device_name(session):
+    oid_sys_name = '1.3.6.1.2.1.1.5.0'
+    try:
+        sys_name = session.get(oid_sys_name).value  # Coletar nome do dispositivo
+        return sys_name
+    except Exception as e:
+        print(f'Erro ao coletar informações: {e}')
+        return None
+
+def collect_uptime(session):
+    oid_sys_uptime = '1.3.6.1.2.1.1.3.0'
+    try:
+        # Coletar o sysUpTime em centésimos de segundo
+        uptime_ticks = int(session.get(oid_sys_uptime).value)
+        
+        # Converter de centésimos de segundo para segundos
+        uptime_seconds = uptime_ticks / 100
+        
+        return uptime_seconds
+    except Exception as e:
+        print(f'Erro ao coletar o uptime: {e}')
+        return None
 
 def save_bandwidth_monitoring(conn, device_id, in_kbps, out_kbps):
     timestamp = datetime.now()
@@ -278,6 +317,24 @@ def save_bandwidth_monitoring(conn, device_id, in_kbps, out_kbps):
 def monitor_bandwidth_usage(target_id, target, community):
     conn = connect_to_db()
     device_info = db.check_snmp(conn, target_id)
+    session = Session(hostname=target, community=community, version=2)
+
+    so_info = collect_SO_info(session)
+    if device_info[2] == None:
+        device_name = collect_device_name(session)
+        if device_name != None:
+            if so_info != None:
+                updates = {"device_name":device_name,
+                           "os": so_info}
+            else:
+                updates = {"device_name":device_name}
+    else:
+        if so_info != None:
+            updates = {"os": so_info}
+        else:
+            updates = None
+    if updates != None:
+        db.update_device(conn, target_id, updates)
 
     # OIDs de 32 bits para bytes recebidos e enviados na interface (use o índice correto da interface)
     oid_in_octets_start = '1.3.6.1.2.1.2.2.1.10.'  # ifInOctets
@@ -295,9 +352,19 @@ def monitor_bandwidth_usage(target_id, target, community):
         oid_in_octets = f'{oid_in_octets_start}{aux}'
         oid_out_octets = f'{oid_out_octets_start}{aux}'
 
-    session = Session(hostname=target, community=community, version=2)
     while True:
         in_kbps, out_kbps = collect_bandwidth_usage(session, oid_in_octets, oid_out_octets)
+        uptime = collect_uptime(session)
+
+        if uptime != None:
+            updates = {"upTime":uptime}
+            db.update_device(conn, target_id, updates)
+        elif device_info[8] != "online":
+            uptime = 0
+            updates = {"upTime":uptime}
+            db.update_device(conn, target_id, updates)
+        else:
+            print(f"Erro ao coletar o upTime")
 
         if (in_kbps is not None and out_kbps is not None) and (in_kbps > 0.0 and out_kbps > 0.0):
             print(f'Download: {in_kbps:.2f} kbps | Upload: {out_kbps:.2f} kbps')
@@ -319,13 +386,16 @@ def monitor_bandwidth_usage(target_id, target, community):
                     db.update_device(conn, target_id, updates)
                     aux = 0
                     flag = True
+            else:
+                in_kbps=0.0
+                out_kbps=0.0
+                save_bandwidth_monitoring(conn, target_id, in_kbps, out_kbps)
 
         if db.check_snmp(conn, target_id) == None:
             break
 
 def SNMP_monitoring(community):
     # Configurações SNMP
-    ip = '192.168.0.199'  # IP do dispositivo
     conn = connect_to_db()
     targets = db.fetch_ip_by_snmp(conn)
     print(f'{targets}')

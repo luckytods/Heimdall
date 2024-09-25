@@ -79,9 +79,11 @@ def get_user_devices():
     try:
         cursor = connection.cursor(dictionary=True)
         device_query = """
-        SELECT id, device_name, ip_address, mac_address, os, last_online, is_snmp_enabled, status 
+        SELECT id, device_name, ip_address, mac_address, os, last_online, is_snmp_enabled, 
+        status, first_online
         FROM devices
         WHERE created_by = %s
+
         """
         cursor.execute(device_query, (user_id,))
         devices = cursor.fetchall()
@@ -243,6 +245,36 @@ def create_user():
         if connection.is_connected():
             connection.close()
             print("Conexão ao banco de dados fechada.")
+
+@app.route('/update-snmp-status', methods=['POST'])
+def update_snmp_status():
+    data = request.get_json()
+    ip_address = data.get('ip')
+    new_status = data.get('is_snmp_enabled')
+
+    if ip_address is None or new_status is None:
+        return jsonify({'success': False, 'error': 'Parâmetros inválidos.'}), 400
+
+    connection = connect_db()
+    if not connection:
+        return jsonify({'success': False, 'error': 'Failed to connect to database'}), 500
+
+    try:
+        cursor = connection.cursor()
+        update_query = """
+        UPDATE devices 
+        SET is_snmp_enabled = %s 
+        WHERE ip_address = %s
+        """
+        cursor.execute(update_query, (new_status, ip_address))
+        connection.commit()
+        cursor.close()
+        return jsonify({'success': True})
+    except Error as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if connection.is_connected():
+            connection.close()
 
 
 if __name__ == '__main__':
