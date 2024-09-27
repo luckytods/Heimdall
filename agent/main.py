@@ -175,6 +175,9 @@ def scan_ICMP(nm, target, myIP, MACadd):
             print(f'antes do save info')
             save_scan_info(conn, host, mac, os)
 
+        with db_thread_lock:
+            db.update_device_status(conn, hosts_list)
+
     print(f'Sleeping for 10 seconds')
     time.sleep(10)
 
@@ -378,7 +381,10 @@ def monitor_bandwidth_usage(target_id, target, community):
             print('Erro ao obter dados')
             if device_info[8] == "online":
                 if flag:
-                    aux = aux+1
+                    if aux < 40:
+                        aux = aux+1
+                    else:
+                        aux = 0
                     oid_in_octets = f'{oid_in_octets_start}{aux}'
                     oid_out_octets = f'{oid_out_octets_start}{aux}'
                 else:

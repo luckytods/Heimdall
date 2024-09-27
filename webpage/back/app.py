@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import mysql.connector
 from mysql.connector import Error
+import time
 
 app = Flask(__name__)
 CORS(app)
@@ -80,7 +81,7 @@ def get_user_devices():
         cursor = connection.cursor(dictionary=True)
         device_query = """
         SELECT id, device_name, ip_address, mac_address, os, last_online, is_snmp_enabled, 
-        status, first_online
+        status, first_online, upTime
         FROM devices
         WHERE created_by = %s
 
@@ -275,6 +276,44 @@ def update_snmp_status():
     finally:
         if connection.is_connected():
             connection.close()
+
+@app.route('/device-bandwidth', methods=['GET'])
+def get_device_bandwidth():
+    device_id = request.args.get('device_id')
+    if not device_id:
+        return jsonify({'success': False, 'error': 'Parâmetro "device_id" é necessário.'}), 400
+
+    connection = connect_db()
+    if not connection:
+        return jsonify({'success': False, 'error': 'Falha ao conectar ao banco de dados'}), 500
+
+    try:
+        cursor = connection.cursor(dictionary=True)
+
+        # Seleciona todos os dados do dispositivo nas últimas 12 horas
+        query = """
+        SELECT 
+            UNIX_TIMESTAMP(timestamp) AS timestamp,
+            download_usage,
+            upload_usage
+        FROM bandwidth_monitoring
+        WHERE device_id = %s
+        AND timestamp >= NOW() - INTERVAL 12 HOUR
+        ORDER BY timestamp
+        """
+        cursor.execute(query, (device_id,))
+        rows = cursor.fetchall()
+
+        cursor.close()
+
+        return jsonify({'success': True, 'data': rows})
+    except Error as e:
+        print(f"Erro ao consultar o banco de dados: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+    finally:
+        if connection.is_connected():
+            connection.close()
+
 
 
 if __name__ == '__main__':

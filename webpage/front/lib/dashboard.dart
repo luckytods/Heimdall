@@ -122,7 +122,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
               SizedBox(height: 20), // Espaço entre a lista de IPs e os gráficos
-              ...ipList.map((ip) => _buildIpCharts(ip['ip_address'])).toList(),
+
+              // Título antes dos gráficos
+              Text(
+                'Monitoramento de Rede',
+                style: TextStyle(
+                  fontSize: 24, // Tamanho maior para o título
+                  fontWeight: FontWeight.bold, // Negrito
+                  color: Colors.orange, // Cor do título
+                ),
+              ),
+              SizedBox(height: 20), // Espaço entre o título e os gráficos
+
+              // Filtro para exibir gráficos apenas dos IPs com is_snmp_enabled = 1
+              ...ipList
+                  .where((ip) => ip['is_snmp_enabled'] == 1)
+                  .map((ip) => _buildIpCharts(ip['ip_address']))
+                  .toList(),
+
+              // Caso não haja dispositivos monitorados por SNMP
+              if (ipList.where((ip) => ip['is_snmp_enabled'] == 1).isEmpty)
+                Center(
+                  child: Text(
+                    'Nenhum dispositivo monitorado por SNMP encontrado.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
             ],
           ),
         ),
@@ -180,6 +205,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       _showError('Erro de conexão ao buscar status do agente: $e');
     }
+  }
+
+  String formatUpTime(int seconds) {
+    int days = seconds ~/ (24 * 3600); // Calcula dias
+    seconds %= (24 * 3600);
+    int hours = seconds ~/ 3600; // Calcula horas
+    seconds %= 3600;
+    int minutes = seconds ~/ 60; // Calcula minutos
+
+    List<String> parts = [];
+
+    if (days > 0) {
+      parts.add('${days}d');
+    }
+    if (hours > 0) {
+      parts.add('${hours}h');
+    }
+    if (minutes > 0 || parts.isEmpty) {
+      // Se minutos ou se todas as partes estão vazias
+      parts.add('${minutes}m');
+    }
+
+    return parts.join(' '); // Junta as partes com espaços
   }
 
   // Função para formatar a data/hora de uma forma amigável
@@ -657,6 +705,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildIpCharts(String ip) {
+    final device = ipList.firstWhere((element) => element['ip_address'] == ip);
+    final int upTimeSeconds =
+        device['upTime'] ?? 0; // Recupera o upTime em segundos ou 0
+    final String formattedUpTime =
+        formatUpTime(upTimeSeconds); // Formata o upTime
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -667,38 +721,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         SizedBox(height: 8),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Container(
-                color: Colors.grey[800],
+            // Caixa de upTime
+            Container(
+              width: 70, // Largura e altura para o quadrado
+              height: 70,
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey[850],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'Latência (ms)',
+                      'UpTime',
                       style: TextStyle(
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: Colors.white),
                     ),
-                    SizedBox(height: 200, child: LineChartWidget()),
+                    SizedBox(height: 4),
+                    Text(
+                      formattedUpTime, // Exibe o upTime formatado
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.orange, // Cor diferenciada para o upTime
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
-            SizedBox(width: 16), // Espaço entre os gráficos
+            SizedBox(width: 16), // Espaço entre a caixa de upTime e o gráfico
+
+            // Gráfico de área
             Expanded(
               child: Container(
-                color: Colors.grey[800],
+                color: Colors.grey[800], // Mesma cor da caixa de gráficos
                 child: Column(
                   children: [
                     Text(
-                      'Uso de Largura de Banda (Mbps)',
+                      'Download e Upload (kbps)',
                       style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white),
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
-                    SizedBox(height: 200, child: BarChartWidget()),
+                    SizedBox(
+                      height: 200, // Altura do gráfico
+                      child: AreaChartWidget(), // Widget do gráfico de área
+                    ),
                   ],
                 ),
               ),
@@ -711,80 +788,153 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-class LineChartWidget extends StatelessWidget {
+class AreaChartWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return LineChart(
-      LineChartData(
-        backgroundColor: Colors.transparent,
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: true,
-          getDrawingVerticalLine: (value) =>
-              FlLine(color: Colors.orange, strokeWidth: 1),
-          getDrawingHorizontalLine: (value) =>
-              FlLine(color: Colors.orange, strokeWidth: 1),
-        ),
-        titlesData: FlTitlesData(show: true),
-        borderData: FlBorderData(show: false),
-        lineBarsData: [
-          LineChartBarData(
-            spots: [
-              FlSpot(0, 1),
-              FlSpot(1, 3),
-              FlSpot(2, 10),
-              FlSpot(3, 7),
-              FlSpot(4, 12),
-              FlSpot(5, 13),
-              FlSpot(6, 17),
-            ],
-            isCurved: true,
-            barWidth: 2,
-            color: Colors.orange,
-            dotData: FlDotData(
-              show: true,
-              getDotPainter: (spot, percent, barData, index) =>
-                  FlDotCirclePainter(
-                radius: 3,
-                color: Colors.orange,
-                strokeWidth: 1.5,
-                strokeColor: Colors.white,
+    return Padding(
+      padding: const EdgeInsets.all(16.0), // Espaço interno maior
+      child: Column(
+        children: [
+          // Usa o Expanded para ajustar a altura do gráfico dentro do espaço disponível
+          Expanded(
+            child: LineChart(
+              LineChartData(
+                backgroundColor: Colors.transparent,
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: true,
+                  getDrawingVerticalLine: (value) => FlLine(
+                    color: Colors.grey.withOpacity(0.5), // Cor mais suave
+                    strokeWidth: 0.5,
+                  ),
+                  getDrawingHorizontalLine: (value) => FlLine(
+                    color: Colors.grey.withOpacity(0.5), // Cor mais suave
+                    strokeWidth: 0.5,
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 40, // Espaço para as legendas do eixo Y
+                      interval: 10, // Menos marcações no eixo Y
+                      getTitlesWidget: (value, meta) {
+                        // Mostra apenas valores múltiplos de 10
+                        return value % 10 == 0
+                            ? Text(
+                                '${value.toInt()}',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                ),
+                              )
+                            : Container(); // Sem título
+                      },
+                    ),
+                  ),
+                  rightTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 30, // Espaço para as legendas do eixo X
+                      interval: 1, // Menos marcações no eixo X
+                      getTitlesWidget: (value, meta) {
+                        // Mostra apenas valores inteiros
+                        return value % 1 == 0
+                            ? Text(
+                                'Min ${value.toInt()}',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                ),
+                              )
+                            : Container(); // Sem título
+                      },
+                    ),
+                  ),
+                  topTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: [
+                      FlSpot(0, 5), // Exemplo de dados de download
+                      FlSpot(1, 6),
+                      FlSpot(2, 8),
+                      FlSpot(3, 5),
+                      FlSpot(4, 6),
+                      FlSpot(5, 9),
+                    ],
+                    isCurved: true,
+                    barWidth: 2,
+                    color: Colors.orange,
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: Colors.orange.withOpacity(0.3),
+                    ),
+                  ),
+                  LineChartBarData(
+                    spots: [
+                      FlSpot(0, 3), // Exemplo de dados de upload
+                      FlSpot(1, 4),
+                      FlSpot(2, 3),
+                      FlSpot(3, 6),
+                      FlSpot(4, 4),
+                      FlSpot(5, 7),
+                    ],
+                    isCurved: true,
+                    barWidth: 2,
+                    color: Colors.blue,
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: Colors.blue.withOpacity(0.3),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
+          SizedBox(height: 8), // Espaço entre o gráfico e a legenda
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    color: Colors.orange,
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    'Download',
+                    style: TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
+              ),
+              SizedBox(width: 16), // Espaço entre legendas
+              Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    color: Colors.blue,
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    'Upload',
+                    style: TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ],
-      ),
-    );
-  }
-}
-
-class BarChartWidget extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return BarChart(
-      BarChartData(
-        backgroundColor: Colors.transparent,
-        alignment: BarChartAlignment.spaceBetween,
-        barGroups: [
-          BarChartGroupData(
-              x: 1, barRods: [BarChartRodData(toY: 8, color: Colors.orange)]),
-          BarChartGroupData(
-              x: 2, barRods: [BarChartRodData(toY: 10, color: Colors.orange)]),
-          BarChartGroupData(
-              x: 3, barRods: [BarChartRodData(toY: 14, color: Colors.orange)]),
-          BarChartGroupData(
-              x: 4, barRods: [BarChartRodData(toY: 15, color: Colors.orange)]),
-          BarChartGroupData(
-              x: 5, barRods: [BarChartRodData(toY: 13, color: Colors.orange)]),
-        ],
-        titlesData: FlTitlesData(show: true),
-        borderData: FlBorderData(show: false),
-        gridData: FlGridData(
-          show: true,
-          drawHorizontalLine: true,
-          getDrawingHorizontalLine: (value) =>
-              FlLine(color: Colors.orange, strokeWidth: 1),
-        ),
       ),
     );
   }
