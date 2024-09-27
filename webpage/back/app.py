@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import mysql.connector
 from mysql.connector import Error
+from datetime import datetime, timedelta  # Import para lidar com datas
 import time
 
 app = Flask(__name__)
@@ -277,42 +278,63 @@ def update_snmp_status():
         if connection.is_connected():
             connection.close()
 
-@app.route('/device-bandwidth', methods=['GET'])
-def get_device_bandwidth():
-    device_id = request.args.get('device_id')
-    if not device_id:
-        return jsonify({'success': False, 'error': 'Parâmetro "device_id" é necessário.'}), 400
+# Rota para obter dados de largura de banda dos dispositivos do usuário nos últimos 7 dias
+@app.route('/user/bandwidth', methods=['GET'])
+def get_user_bandwidth():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({'success': False, 'error': 'Parâmetro user_id é necessário.'}), 400
 
     connection = connect_db()
     if not connection:
-        return jsonify({'success': False, 'error': 'Falha ao conectar ao banco de dados'}), 500
+        print("Falha na conexão ao banco de dados.")
+        return jsonify({'success': False, 'error': 'Failed to connect to database'})
 
     try:
         cursor = connection.cursor(dictionary=True)
+        
+        # Pegar a data e hora de uma semana atrás
+        one_week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
 
-        # Seleciona todos os dados do dispositivo nas últimas 12 horas
-        query = """
-        SELECT 
-            UNIX_TIMESTAMP(timestamp) AS timestamp,
-            download_usage,
-            upload_usage
-        FROM bandwidth_monitoring
-        WHERE device_id = %s
-        AND timestamp >= NOW() - INTERVAL 12 HOUR
-        ORDER BY timestamp
+        # Consulta para obter todos os dispositivos com SNMP habilitado do usuário
+        device_query = """
+        SELECT id, device_name, ip_address 
+        FROM devices 
+        WHERE created_by = %s AND is_snmp_enabled = 1
         """
-        cursor.execute(query, (device_id,))
-        rows = cursor.fetchall()
+        cursor.execute(device_query, (user_id,))
+        devices = cursor.fetchall()
+        
+        if not devices:
+            return jsonify({'success': True, 'data': []})  # Retorna vazio se nenhum dispositivo for encontrado
+
+        bandwidth_data = {}
+
+        for device in devices:
+            device_id = device['id']
+
+            # Consulta para obter os dados de largura de banda nos últimos 7 dias para cada dispositivo
+            bandwidth_query = """
+            SELECT timestamp, download_usage, upload_usage 
+            FROM bandwidth_monitoring 
+            WHERE device_id = %s AND timestamp >= %s
+            ORDER BY timestamp
+            """
+            cursor.execute(bandwidth_query, (device_id, one_week_ago))
+            bandwidth_usage = cursor.fetchall()
+
+            # Adiciona os dados ao dicionário com base no ip_address do dispositivo
+            bandwidth_data[device['ip_address']] = bandwidth_usage
 
         cursor.close()
-
-        return jsonify({'success': True, 'data': rows})
+        return jsonify({'success': True, 'data': bandwidth_data})
     except Error as e:
         print(f"Erro ao consultar o banco de dados: {e}")
         return jsonify({'success': False, 'error': str(e)})
     finally:
         if connection.is_connected():
             connection.close()
+            print("Conexão ao banco de dados fechada.")
 
 
 

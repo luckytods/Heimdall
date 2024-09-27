@@ -28,16 +28,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Timer? timer; // Timer para atualizações periódicas
   String agentStatus = "offline"; // Estado inicial do status do agente
   String lastUpdated = ""; // Estado inicial do timestamp do último update
+  List<Map<String, dynamic>> bandwidthData = [];
+  // Lista para armazenar os dados de largura de banda
+  Map<String, String> selectedTimeframe =
+      {}; // Armazena o tempo selecionado para cada IP
+  Map<String, List<FlSpot>> downloadData = {};
+  Map<String, List<FlSpot>> uploadData = {};
 
   @override
   void initState() {
     super.initState();
     fetchDevices(); // Busca os dados inicialmente
     fetchAgentStatus(); // Busca o status do agente
+    fetchBandwidthData();
     // Configura um timer para atualizar os dados a cada 10 segundos
     timer = Timer.periodic(Duration(seconds: 10), (Timer t) {
       fetchDevices();
       fetchAgentStatus();
+      fetchBandwidthData();
+    });
+  }
+
+  // Define as opções do Dropdown e a opção inicial
+  final List<String> timeOptions = [
+    "Última semana",
+    "Último dia",
+    "Última hora"
+  ];
+
+  // Define a função para tratar a seleção do tempo
+  void _handleTimeframeChange(String ip, String? newValue) {
+    setState(() {
+      selectedTimeframe[ip] = newValue ?? "Última semana";
     });
   }
 
@@ -166,6 +188,163 @@ class _DashboardScreenState extends State<DashboardScreen> {
           builder: (context) =>
               LoginPage()), // Substitua pela navegação para a tela de login
     );
+  }
+
+  // Função para coletar dados de monitoramento da API
+  Future<void> fetchBandwidthData() async {
+    try {
+      var url = Uri.parse(
+          'http://localhost:5000/user/bandwidth?user_id=${widget.userId}');
+      var response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        var responseData = json.decode(response.body);
+
+        if (responseData is Map && responseData.containsKey('data')) {
+          var rawData = responseData['data'] as Map<String, dynamic>;
+
+          setState(() {
+            bandwidthData = []; // Reseta a lista de dados de largura de banda
+
+            // Itera sobre cada IP e seus respectivos dados de largura de banda
+            rawData.forEach((ip, dataList) {
+              if (dataList is List) {
+                // Casting para List<Map<String, dynamic>>
+                List<Map<String, dynamic>> parsedDataList =
+                    dataList.cast<Map<String, dynamic>>();
+
+                for (var item in parsedDataList) {
+                  bandwidthData.add({
+                    'ip': ip,
+                    'timestamp': item['timestamp'],
+                    'download_usage':
+                        double.tryParse(item['download_usage']) ?? 0.0,
+                    'upload_usage':
+                        double.tryParse(item['upload_usage']) ?? 0.0,
+                  });
+                }
+              }
+            });
+
+            // Processa os dados de largura de banda para cada IP monitorado por SNMP
+            ipList.forEach((ipInfo) {
+              String ip = ipInfo['ip_address'];
+              if (ipInfo['is_snmp_enabled'] == 1) {
+                // Obter a opção selecionada para o período, com 'Última semana' como padrão
+                String selectedOption =
+                    selectedTimeframe[ip] ?? 'Última semana';
+
+                // Filtrar os dados de largura de banda para o IP atual
+                List<Map<String, dynamic>> ipData =
+                    bandwidthData.where((data) => data['ip'] == ip).toList();
+
+                // Processar os dados conforme o período selecionado e atualizar downloadData e uploadData
+                List<List<FlSpot>> processedData =
+                    processBandwidthData(ipData, selectedOption);
+
+                downloadData[ip] = processedData[0];
+                uploadData[ip] = processedData[1];
+              }
+            });
+          });
+        } else {
+          _showError('Erro ao buscar dados: Estrutura de resposta inesperada.');
+        }
+      } else {
+        _showError(
+            'Erro ao buscar dados: ${response.statusCode} - ${response.reasonPhrase}');
+      }
+    } catch (e) {
+      _showError('Erro ao buscar dados: $e');
+    }
+  }
+
+  // Função para processar os dados de largura de banda conforme o tempo selecionado
+  List<List<FlSpot>> processBandwidthData(
+      List<Map<String, dynamic>> ipData, String selectedOption) {
+    DateTime now = DateTime.now();
+    List<FlSpot> downloadSpots = [];
+    List<FlSpot> uploadSpots = [];
+
+    if (selectedOption == 'Última semana') {
+      // Intervalo de 6 horas para a última semana
+      for (int i = 7 * 4; i >= 0; i--) {
+        DateTime periodStart = now.subtract(Duration(hours: i * 6));
+        DateTime periodEnd = periodStart.add(Duration(hours: 6));
+
+        // Filtra dados dentro do período de 6 horas
+        var periodData = ipData.where((data) {
+          DateTime timestamp = DateTime.parse(data['timestamp']);
+          return timestamp.isAfter(periodStart) &&
+              timestamp.isBefore(periodEnd);
+        }).toList();
+
+        double downloadAvg = _calculateAverage(periodData, 'download_usage');
+        double uploadAvg = _calculateAverage(periodData, 'upload_usage');
+
+        // Adiciona os valores calculados como FlSpot para download e upload
+        downloadSpots.add(
+            FlSpot(periodStart.millisecondsSinceEpoch.toDouble(), downloadAvg));
+        uploadSpots.add(
+            FlSpot(periodStart.millisecondsSinceEpoch.toDouble(), uploadAvg));
+      }
+    } else if (selectedOption == 'Último dia') {
+      // Intervalo de 1 hora para o último dia
+      for (int i = 24; i >= 0; i--) {
+        DateTime periodStart = now.subtract(Duration(hours: i));
+        DateTime periodEnd = periodStart.add(Duration(hours: 1));
+
+        var periodData = ipData.where((data) {
+          DateTime timestamp = DateTime.parse(data['timestamp']);
+          return timestamp.isAfter(periodStart) &&
+              timestamp.isBefore(periodEnd);
+        }).toList();
+
+        double downloadAvg = _calculateAverage(periodData, 'download_usage');
+        double uploadAvg = _calculateAverage(periodData, 'upload_usage');
+
+        downloadSpots.add(
+            FlSpot(periodStart.millisecondsSinceEpoch.toDouble(), downloadAvg));
+        uploadSpots.add(
+            FlSpot(periodStart.millisecondsSinceEpoch.toDouble(), uploadAvg));
+      }
+    } else if (selectedOption == 'Última hora') {
+      // Intervalo de 2 minutos para a última hora
+      for (int i = 60 ~/ 2; i >= 0; i--) {
+        DateTime periodStart = now.subtract(Duration(minutes: i * 2));
+        DateTime periodEnd = periodStart.add(Duration(minutes: 2));
+
+        var periodData = ipData.where((data) {
+          DateTime timestamp = DateTime.parse(data['timestamp']);
+          return timestamp.isAfter(periodStart) &&
+              timestamp.isBefore(periodEnd);
+        }).toList();
+
+        double downloadAvg = _calculateAverage(periodData, 'download_usage');
+        double uploadAvg = _calculateAverage(periodData, 'upload_usage');
+
+        downloadSpots.add(
+            FlSpot(periodStart.millisecondsSinceEpoch.toDouble(), downloadAvg));
+        uploadSpots.add(
+            FlSpot(periodStart.millisecondsSinceEpoch.toDouble(), uploadAvg));
+      }
+    }
+
+    return [
+      downloadSpots,
+      uploadSpots
+    ]; // Retorna listas de FlSpot para download e upload
+  }
+
+// Função auxiliar para calcular a média de um período
+  double _calculateAverage(List<Map<String, dynamic>> periodData, String key) {
+    if (periodData.isEmpty) return 0.0;
+
+    double total = 0.0;
+    for (var data in periodData) {
+      total += data[key];
+    }
+    return total / periodData.length;
   }
 
   // Função para buscar o status do agente da API
@@ -711,13 +890,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final String formattedUpTime =
         formatUpTime(upTimeSeconds); // Formata o upTime
 
+    // Inicializa o valor padrão de tempo, se ainda não estiver definido
+    if (!selectedTimeframe.containsKey(ip)) {
+      selectedTimeframe[ip] = "Última semana"; // Definindo como padrão
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Monitoramento de Rede para $ip',
-          style: TextStyle(
-              fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+        Row(
+          children: [
+            Text(
+              ip,
+              style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold),
+            ),
+            SizedBox(width: 8),
+            Text(
+              '(${device['device_name']})',
+              style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white70), // Nome menor e cor mais clara
+            ),
+            SizedBox(width: 16), // Espaço entre o nome e o dropdown
+
+            // Adiciona o DropdownButton
+            DropdownButton<String>(
+              value: selectedTimeframe[ip],
+              dropdownColor: Colors.grey[850],
+              iconEnabledColor: Colors.white,
+              items: timeOptions.map<DropdownMenuItem<String>>((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                        color: Colors.white), // Estilo do texto do dropdown
+                  ),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                _handleTimeframeChange(
+                    ip, newValue); // Atualiza a seleção do tempo
+                // Aqui você pode adicionar lógica para atualizar os dados com base na seleção
+                // Por exemplo, buscar novos dados da API para o período selecionado.
+              },
+            ),
+          ],
         ),
         SizedBox(height: 8),
         Row(
@@ -726,7 +947,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             // Caixa de upTime
             Container(
               width: 70, // Largura e altura para o quadrado
-              height: 70,
+              height: 80,
               padding: EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: Colors.grey[850],
