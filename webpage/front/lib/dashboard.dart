@@ -214,14 +214,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     dataList.cast<Map<String, dynamic>>();
 
                 for (var item in parsedDataList) {
-                  bandwidthData.add({
-                    'ip': ip,
-                    'timestamp': item['timestamp'],
-                    'download_usage':
-                        double.tryParse(item['download_usage']) ?? 0.0,
-                    'upload_usage':
-                        double.tryParse(item['upload_usage']) ?? 0.0,
-                  });
+                  try {
+                    String timestamp = item['timestamp'];
+                    DateTime parsedTimestamp =
+                        DateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", "en_US")
+                            .parse(timestamp, true);
+
+                    bandwidthData.add({
+                      'ip': ip,
+                      'timestamp': parsedTimestamp.toString(),
+                      'download_usage':
+                          double.tryParse(item['download_usage']) ?? 0.0,
+                      'upload_usage':
+                          double.tryParse(item['upload_usage']) ?? 0.0,
+                    });
+                  } catch (e) {
+                    // Caso ocorra um erro de parsing, exiba uma mensagem
+                    _showError('Erro ao converter data: ${item['timestamp']}');
+                  }
                 }
               }
             });
@@ -241,6 +251,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // Processar os dados conforme o período selecionado e atualizar downloadData e uploadData
                 List<List<FlSpot>> processedData =
                     processBandwidthData(ipData, selectedOption);
+
+                // Imprimir os dados processados para depuração
+                print('Dados processados para $ip:');
+                print('Download Spots: ${processedData[0]}');
+                print('Upload Spots: ${processedData[1]}');
 
                 downloadData[ip] = processedData[0];
                 uploadData[ip] = processedData[1];
@@ -890,6 +905,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final String formattedUpTime =
         formatUpTime(upTimeSeconds); // Formata o upTime
 
+    // Verifica se o IP tem dados de download e upload
+    final downloadSpots = downloadData[ip] ?? [];
+    final uploadSpots = uploadData[ip] ?? [];
+
     // Inicializa o valor padrão de tempo, se ainda não estiver definido
     if (!selectedTimeframe.containsKey(ip)) {
       selectedTimeframe[ip] = "Última semana"; // Definindo como padrão
@@ -995,7 +1014,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     SizedBox(
                       height: 200, // Altura do gráfico
-                      child: AreaChartWidget(), // Widget do gráfico de área
+                      child: AreaChartWidget(
+                        downloadSpots:
+                            downloadSpots, // Passando os dados de download
+                        uploadSpots: uploadSpots, // Passando os dados de upload
+                      ), // Widget do gráfico de área
                     ),
                   ],
                 ),
@@ -1010,13 +1033,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 class AreaChartWidget extends StatelessWidget {
+  final List<FlSpot> downloadSpots;
+  final List<FlSpot> uploadSpots;
+
+  AreaChartWidget({required this.downloadSpots, required this.uploadSpots});
+
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(16.0), // Espaço interno maior
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          // Usa o Expanded para ajustar a altura do gráfico dentro do espaço disponível
           Expanded(
             child: LineChart(
               LineChartData(
@@ -1025,72 +1052,63 @@ class AreaChartWidget extends StatelessWidget {
                   show: true,
                   drawVerticalLine: true,
                   getDrawingVerticalLine: (value) => FlLine(
-                    color: Colors.grey.withOpacity(0.5), // Cor mais suave
+                    color: Colors.grey.withOpacity(0.5),
                     strokeWidth: 0.5,
                   ),
                   getDrawingHorizontalLine: (value) => FlLine(
-                    color: Colors.grey.withOpacity(0.5), // Cor mais suave
+                    color: Colors.grey.withOpacity(0.5),
                     strokeWidth: 0.5,
                   ),
                 ),
                 titlesData: FlTitlesData(
                   show: true,
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 40, // Espaço para as legendas do eixo Y
-                      interval: 10, // Menos marcações no eixo Y
-                      getTitlesWidget: (value, meta) {
-                        // Mostra apenas valores múltiplos de 10
-                        return value % 10 == 0
-                            ? Text(
-                                '${value.toInt()}',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                ),
-                              )
-                            : Container(); // Sem título
-                      },
-                    ),
-                  ),
-                  rightTitles: AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 30, // Espaço para as legendas do eixo X
-                      interval: 1, // Menos marcações no eixo X
+                      reservedSize: 50,
                       getTitlesWidget: (value, meta) {
-                        // Mostra apenas valores inteiros
-                        return value % 1 == 0
-                            ? Text(
-                                'Min ${value.toInt()}',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                ),
-                              )
-                            : Container(); // Sem título
+                        // Converte o valor de millisecondsSinceEpoch para uma data legível
+                        DateTime date =
+                            DateTime.fromMillisecondsSinceEpoch(value.toInt());
+                        // Formata a data conforme necessário
+                        return Text(
+                          DateFormat('dd/MM HH:mm')
+                              .format(date), // Formatação desejada
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 40,
+                      getTitlesWidget: (value, meta) {
+                        // Formatando o valor do eixo Y com duas casas decimais
+                        return Text(
+                          '${value.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        );
                       },
                     ),
                   ),
                   topTitles: AxisTitles(
                     sideTitles: SideTitles(showTitles: false),
                   ),
+                  rightTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                 ),
                 borderData: FlBorderData(show: false),
                 lineBarsData: [
                   LineChartBarData(
-                    spots: [
-                      FlSpot(0, 5), // Exemplo de dados de download
-                      FlSpot(1, 6),
-                      FlSpot(2, 8),
-                      FlSpot(3, 5),
-                      FlSpot(4, 6),
-                      FlSpot(5, 9),
-                    ],
+                    spots: downloadSpots,
                     isCurved: true,
                     barWidth: 2,
                     color: Colors.orange,
@@ -1100,14 +1118,7 @@ class AreaChartWidget extends StatelessWidget {
                     ),
                   ),
                   LineChartBarData(
-                    spots: [
-                      FlSpot(0, 3), // Exemplo de dados de upload
-                      FlSpot(1, 4),
-                      FlSpot(2, 3),
-                      FlSpot(3, 6),
-                      FlSpot(4, 4),
-                      FlSpot(5, 7),
-                    ],
+                    spots: uploadSpots,
                     isCurved: true,
                     barWidth: 2,
                     color: Colors.blue,
@@ -1138,7 +1149,7 @@ class AreaChartWidget extends StatelessWidget {
                   ),
                 ],
               ),
-              SizedBox(width: 16), // Espaço entre legendas
+              SizedBox(width: 16),
               Row(
                 children: [
                   Container(
