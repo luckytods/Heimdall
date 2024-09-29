@@ -215,14 +215,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 for (var item in parsedDataList) {
                   try {
+                    // Aqui garantimos que o timestamp seja convertido para UTC
                     String timestamp = item['timestamp'];
                     DateTime parsedTimestamp =
                         DateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", "en_US")
-                            .parse(timestamp, true);
+                            .parse(timestamp, true)
+                            .toUtc(); // Convertemos para UTC
 
+                    DateTime correctedTimestamp =
+                        parsedTimestamp.add(Duration(hours: 3));
+
+                    int millisecondsTimestamp =
+                        correctedTimestamp.millisecondsSinceEpoch;
+
+                    // Agora usamos millisecondsSinceEpoch (em UTC) para garantir precisão nos cálculos de períodos
                     bandwidthData.add({
                       'ip': ip,
-                      'timestamp': parsedTimestamp.toString(),
+                      'timestamp': millisecondsTimestamp, // Timestamp em UTC
                       'download_usage':
                           double.tryParse(item['download_usage']) ?? 0.0,
                       'upload_usage':
@@ -252,11 +261,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 List<List<FlSpot>> processedData =
                     processBandwidthData(ipData, selectedOption);
 
-                // Imprimir os dados processados para depuração
-                print('Dados processados para $ip:');
-                print('Download Spots: ${processedData[0]}');
-                print('Upload Spots: ${processedData[1]}');
-
                 downloadData[ip] = processedData[0];
                 uploadData[ip] = processedData[1];
               }
@@ -277,71 +281,73 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Função para processar os dados de largura de banda conforme o tempo selecionado
   List<List<FlSpot>> processBandwidthData(
       List<Map<String, dynamic>> ipData, String selectedOption) {
-    DateTime now = DateTime.now();
+    DateTime now =
+        DateTime.now().toUtc(); // Usar UTC para garantir a consistência
     List<FlSpot> downloadSpots = [];
     List<FlSpot> uploadSpots = [];
+
+    int nowMilliseconds = now
+        .millisecondsSinceEpoch; // Obtenha o timestamp atual em millisecondsSinceEpoch (UTC)
 
     if (selectedOption == 'Última semana') {
       // Intervalo de 6 horas para a última semana
       for (int i = 7 * 4; i >= 0; i--) {
-        DateTime periodStart = now.subtract(Duration(hours: i * 6));
-        DateTime periodEnd = periodStart.add(Duration(hours: 6));
+        int periodStart = nowMilliseconds -
+            (i *
+                6 *
+                60 *
+                60 *
+                1000); // Calcula o período em millisecondsSinceEpoch (UTC)
+        int periodEnd =
+            periodStart + (6 * 60 * 60 * 1000); // Intervalo de 6 horas
 
-        // Filtra dados dentro do período de 6 horas
         var periodData = ipData.where((data) {
-          DateTime timestamp = DateTime.parse(data['timestamp']);
-          return timestamp.isAfter(periodStart) &&
-              timestamp.isBefore(periodEnd);
+          int timestamp =
+              data['timestamp']; // Timestamp já em millisecondsSinceEpoch (UTC)
+          return timestamp >= periodStart && timestamp < periodEnd;
         }).toList();
 
         double downloadAvg = _calculateAverage(periodData, 'download_usage');
         double uploadAvg = _calculateAverage(periodData, 'upload_usage');
 
-        // Adiciona os valores calculados como FlSpot para download e upload
-        downloadSpots.add(
-            FlSpot(periodStart.millisecondsSinceEpoch.toDouble(), downloadAvg));
-        uploadSpots.add(
-            FlSpot(periodStart.millisecondsSinceEpoch.toDouble(), uploadAvg));
+        downloadSpots.add(FlSpot(periodStart.toDouble(), downloadAvg));
+        uploadSpots.add(FlSpot(periodStart.toDouble(), uploadAvg));
       }
     } else if (selectedOption == 'Último dia') {
       // Intervalo de 1 hora para o último dia
       for (int i = 24; i >= 0; i--) {
-        DateTime periodStart = now.subtract(Duration(hours: i));
-        DateTime periodEnd = periodStart.add(Duration(hours: 1));
+        int periodStart = nowMilliseconds -
+            (i * 60 * 60 * 1000); // 1 hora em millisecondsSinceEpoch (UTC)
+        int periodEnd = periodStart + (60 * 60 * 1000); // Intervalo de 1 hora
 
         var periodData = ipData.where((data) {
-          DateTime timestamp = DateTime.parse(data['timestamp']);
-          return timestamp.isAfter(periodStart) &&
-              timestamp.isBefore(periodEnd);
+          int timestamp = data['timestamp'];
+          return timestamp >= periodStart && timestamp < periodEnd;
         }).toList();
 
         double downloadAvg = _calculateAverage(periodData, 'download_usage');
         double uploadAvg = _calculateAverage(periodData, 'upload_usage');
 
-        downloadSpots.add(
-            FlSpot(periodStart.millisecondsSinceEpoch.toDouble(), downloadAvg));
-        uploadSpots.add(
-            FlSpot(periodStart.millisecondsSinceEpoch.toDouble(), uploadAvg));
+        downloadSpots.add(FlSpot(periodStart.toDouble(), downloadAvg));
+        uploadSpots.add(FlSpot(periodStart.toDouble(), uploadAvg));
       }
     } else if (selectedOption == 'Última hora') {
       // Intervalo de 2 minutos para a última hora
-      for (int i = 60 ~/ 2; i >= 0; i--) {
-        DateTime periodStart = now.subtract(Duration(minutes: i * 2));
-        DateTime periodEnd = periodStart.add(Duration(minutes: 2));
+      for (int i = 30; i >= 0; i--) {
+        int periodStart = nowMilliseconds -
+            (i * 2 * 60 * 1000); // 2 minutos em millisecondsSinceEpoch (UTC)
+        int periodEnd = periodStart + (2 * 60 * 1000); // Intervalo de 2 minutos
 
         var periodData = ipData.where((data) {
-          DateTime timestamp = DateTime.parse(data['timestamp']);
-          return timestamp.isAfter(periodStart) &&
-              timestamp.isBefore(periodEnd);
+          int timestamp = data['timestamp'];
+          return timestamp >= periodStart && timestamp < periodEnd;
         }).toList();
 
         double downloadAvg = _calculateAverage(periodData, 'download_usage');
         double uploadAvg = _calculateAverage(periodData, 'upload_usage');
 
-        downloadSpots.add(
-            FlSpot(periodStart.millisecondsSinceEpoch.toDouble(), downloadAvg));
-        uploadSpots.add(
-            FlSpot(periodStart.millisecondsSinceEpoch.toDouble(), uploadAvg));
+        downloadSpots.add(FlSpot(periodStart.toDouble(), downloadAvg));
+        uploadSpots.add(FlSpot(periodStart.toDouble(), uploadAvg));
       }
     }
 
@@ -353,13 +359,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 // Função auxiliar para calcular a média de um período
   double _calculateAverage(List<Map<String, dynamic>> periodData, String key) {
-    if (periodData.isEmpty) return 0.0;
+    if (periodData.isEmpty) {
+      print('Nenhum dado disponível para calcular a média para a chave: $key');
+      return 0.0;
+    }
 
     double total = 0.0;
     for (var data in periodData) {
-      total += data[key];
+      if (data[key] != null) {
+        total += data[key];
+      } else {
+        print('Chave ausente no dado: $data');
+      }
     }
-    return total / periodData.length;
+    // Retorna a média com duas casas decimais
+    double average = total / periodData.length;
+    print('Média calculada para $key: ${average.toStringAsFixed(2)}');
+    return double.parse(average.toStringAsFixed(2));
   }
 
   // Função para buscar o status do agente da API
@@ -1071,14 +1087,19 @@ class AreaChartWidget extends StatelessWidget {
                         DateTime date =
                             DateTime.fromMillisecondsSinceEpoch(value.toInt());
                         // Formata a data conforme necessário
-                        return Text(
-                          DateFormat('dd/MM HH:mm')
-                              .format(date), // Formatação desejada
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                          ),
-                        );
+                        if (value %
+                                ((downloadSpots.length / 5).ceilToDouble()) ==
+                            0) {
+                          return Text(
+                            DateFormat('dd/MM HH:mm')
+                                .format(date), // Formatação desejada
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
+                          );
+                        }
+                        return Container(); // Retorna um widget vazio para esconder os rótulos
                       },
                     ),
                   ),
@@ -1106,6 +1127,23 @@ class AreaChartWidget extends StatelessWidget {
                   ),
                 ),
                 borderData: FlBorderData(show: false),
+                lineTouchData: LineTouchData(
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                      return touchedSpots.map((LineBarSpot touchedSpot) {
+                        DateTime date = DateTime.fromMillisecondsSinceEpoch(
+                            touchedSpot.x.toInt());
+                        String formattedDate =
+                            DateFormat('dd/MM HH:mm').format(date);
+                        return LineTooltipItem(
+                          'Data: $formattedDate\nValor: ${touchedSpot.y.toStringAsFixed(2)} kbps',
+                          TextStyle(color: Colors.white),
+                        );
+                      }).toList();
+                    },
+                  ),
+                  handleBuiltInTouches: true,
+                ),
                 lineBarsData: [
                   LineChartBarData(
                     spots: downloadSpots,

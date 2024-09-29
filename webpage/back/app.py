@@ -294,7 +294,7 @@ def get_user_bandwidth():
         cursor = connection.cursor(dictionary=True)
         
         # Pegar a data e hora de uma semana atrás
-        one_week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+        eight_days_ago = (datetime.now() - timedelta(days=8)).strftime('%Y-%m-%d %H:%M:%S')
 
         # Consulta para obter todos os dispositivos com SNMP habilitado do usuário
         device_query = """
@@ -320,7 +320,7 @@ def get_user_bandwidth():
             WHERE device_id = %s AND timestamp >= %s
             ORDER BY timestamp
             """
-            cursor.execute(bandwidth_query, (device_id, one_week_ago))
+            cursor.execute(bandwidth_query, (device_id, eight_days_ago))
             bandwidth_usage = cursor.fetchall()
 
             # Adiciona os dados ao dicionário com base no ip_address do dispositivo
